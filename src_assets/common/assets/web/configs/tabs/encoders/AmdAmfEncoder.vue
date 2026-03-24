@@ -29,6 +29,13 @@ const config = store.config;
             v-model="config.amd_enforce_hrd"
             class="mb-0"
           />
+
+          <ConfigFieldRenderer
+            v-if="config.amd_rc === 'qvbr'"
+            setting-key="amd_qvbr_quality"
+            v-model="config.amd_qvbr_quality"
+            class="mt-4 mb-0"
+          />
         </section>
 
         <section class="border-t border-dark/10 pt-5 dark:border-light/10">
