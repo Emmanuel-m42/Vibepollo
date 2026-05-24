@@ -19,6 +19,8 @@
 #include <Unknwn.h>
 #include <winrt/windows.graphics.capture.h>
 #include <wrl/client.h>
+#include <AMF/core/Factory.h>
+#include <AMF/core/CurrentTime.h>
 
 // local includes
 #include "src/platform/common.h"
@@ -353,6 +355,40 @@ namespace platf::dxgi {
     texture2d_t old_surface_delayed_destruction;
     std::chrono::steady_clock::time_point old_surface_timestamp;
     std::variant<std::monostate, texture2d_t, std::shared_ptr<platf::img_t>> last_frame_variant;
+  };
+
+  class amd_capture_t {
+  public:
+    amd_capture_t();
+    ~amd_capture_t();
+
+    int init(display_base_t *display, const ::video::config_t &config, int output_index);
+    capture_e next_frame(std::chrono::milliseconds timeout, amf::AMFData **out);
+    capture_e release_frame();
+
+    hmodule_t amfrt_lib;
+    amf_uint64 amf_version = 0;
+    amf::AMFFactory *amf_factory = nullptr;
+
+    amf::AMFContextPtr context;
+    amf::AMFComponentPtr capture_comp;
+    amf::AMFSurfacePtr captured_surface;
+    amf_int64 capture_format = 0;
+    AMFSize resolution {};
+  };
+
+  /**
+   * Display backend that uses AMD Direct Capture with a hardware encoder.
+   */
+  class display_amd_vram_t: public display_vram_t {
+  public:
+    int init(const ::video::config_t &config, const std::string &display_name);
+    capture_e snapshot(const pull_free_image_cb_t &pull_free_image_cb, std::shared_ptr<platf::img_t> &img_out, std::chrono::milliseconds timeout, bool cursor_visible) override;
+    capture_e release_snapshot() override;
+
+  private:
+    amd_capture_t dup;
+    std::optional<int> monitor_index_from_display_name(const std::string &display_name);
   };
 
   /**

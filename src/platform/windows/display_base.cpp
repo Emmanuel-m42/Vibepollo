@@ -1173,12 +1173,21 @@ namespace platf::dxgi {
 namespace platf {
   std::shared_ptr<display_t> display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
     const auto &capture_mode = config::video.capture;
+    const bool amd_requested = capture_mode == "amd";
     const bool user_requested_ddx = capture_mode == "ddx";
     const bool default_to_wgc = dxgi::should_use_wgc_default();
     const bool wgc_requested = capture_mode.starts_with("wgc");
     const bool prefer_wgc_backend = !user_requested_ddx && (wgc_requested || default_to_wgc);
 
     if (hwdevice_type == mem_type_e::dxgi) {
+      if (amd_requested) {
+        auto disp = std::make_shared<dxgi::display_amd_vram_t>();
+        if (!disp->init(config, display_name)) {
+          return disp;
+        }
+        BOOST_LOG(warning) << "AMD Direct Capture init failed; falling back to existing capture backend";
+      }
+
       if (prefer_wgc_backend) {
         auto disp = dxgi::display_wgc_ipc_vram_t::create(config, display_name);
         if (disp || wgc_requested) {
