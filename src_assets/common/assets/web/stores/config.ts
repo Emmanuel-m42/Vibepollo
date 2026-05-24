@@ -265,6 +265,7 @@ const defaultGroups = [
       amd_preanalysis: 'disabled',
       amd_vbaq: 'enabled',
       amd_smart_access_video: 'disabled',
+      amd_sfe_mode: 'disabled',
       amd_coder: 'auto',
     },
   },

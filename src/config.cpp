@@ -795,6 +795,7 @@ namespace config {
       0,  // preanalysis
       1,  // vbaq
       0,  // smart_access_video
+      0,  // sfe_mode
       (int) amd::coder_e::_auto,  // coder
       23,  // qvbr_quality (1-51, default 23)
     },  // amd
@@ -1620,6 +1621,7 @@ namespace config {
     bool_f(vars, "amd_preanalysis", (bool &) video.amd.amd_preanalysis);
     bool_f(vars, "amd_vbaq", (bool &) video.amd.amd_vbaq);
     bool_f(vars, "amd_smart_access_video", (bool &) video.amd.amd_smart_access_video);
+    bool_f(vars, "amd_sfe_mode", (bool &) video.amd.amd_sfe_mode);
     bool_f(vars, "amd_enforce_hrd", (bool &) video.amd.amd_enforce_hrd);
     int_between_f(vars, "amd_qvbr_quality", video.amd.amd_qvbr_quality, { 1, 51 });
 
@@ -2229,6 +2231,7 @@ namespace config {
         "amd_preanalysis",
         "amd_vbaq",
         "amd_smart_access_video",
+        "amd_sfe_mode",
         "amd_qvbr_quality",
         "amd_coder",
         "vt_coder",

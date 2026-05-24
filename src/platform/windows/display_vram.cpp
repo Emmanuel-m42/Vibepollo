@@ -29,6 +29,9 @@ extern "C" {
 #include "src/video.h"
 
 #include <AMF/core/Factory.h>
+#include <AMF/components/VideoEncoderAV1.h>
+#include <AMF/components/VideoEncoderHEVC.h>
+#include <AMF/components/VideoEncoderVCE.h>
 #include <boost/algorithm/string/predicate.hpp>
 
 #if !defined(SUNSHINE_SHADERS_DIR)  // for testing this needs to be defined in cmake as we don't do an install
@@ -1172,10 +1175,46 @@ namespace platf::dxgi {
       amf_cfg.preanalysis = config::video.amd.amd_preanalysis;
       amf_cfg.vbaq = config::video.amd.amd_vbaq;
       amf_cfg.smart_access_video = config::video.amd.amd_smart_access_video;
+      amf_cfg.sfe_mode = config::video.amd.amd_sfe_mode;
       amf_cfg.enforce_hrd = config::video.amd.amd_enforce_hrd;
       amf_cfg.h264_cabac = (config::video.amd.amd_coder != 2);  // 2 = CAVLC
       amf_cfg.max_ltr_frames = 1;  // Enable RFI
       amf_cfg.qvbr_quality_level = config::video.amd.amd_qvbr_quality;
+
+      // SFE mode is an opt-in "compatibility mode":
+      // force known-safe settings so AMF doesn't silently disable split-frame.
+      if (amf_cfg.sfe_mode && *amf_cfg.sfe_mode) {
+        amf_cfg.preanalysis = 0;
+        amf_cfg.high_motion_quality_boost_enable = false;
+
+        if (client_config.videoFormat == 0) {
+          const auto current = amf_cfg.rc_mode.value_or(AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_LATENCY_CONSTRAINED_VBR);
+          const bool valid = current == AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_CONSTANT_QP ||
+                             current == AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR ||
+                             current == AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_CBR;
+          if (!valid) {
+            amf_cfg.rc_mode = AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_CBR;
+          }
+        }
+        else if (client_config.videoFormat == 1) {
+          const auto current = amf_cfg.rc_mode.value_or(AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_LATENCY_CONSTRAINED_VBR);
+          const bool valid = current == AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_CONSTANT_QP ||
+                             current == AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR ||
+                             current == AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_CBR;
+          if (!valid) {
+            amf_cfg.rc_mode = AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD_CBR;
+          }
+        }
+        else {
+          const auto current = amf_cfg.rc_mode.value_or(AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_METHOD_LATENCY_CONSTRAINED_VBR);
+          const bool valid = current == AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_METHOD_CONSTANT_QP ||
+                             current == AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR ||
+                             current == AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_METHOD_CBR;
+          if (!valid) {
+            amf_cfg.rc_mode = AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_METHOD_CBR;
+          }
+        }
+      }
 
       // Pre-Analysis sub-system defaults: enable PAQ + TAQ for better quality at same bitrate
       if (amf_cfg.preanalysis && *amf_cfg.preanalysis) {
@@ -1186,8 +1225,10 @@ namespace platf::dxgi {
         amf_cfg.pa_high_motion_quality_boost = 1;  // Auto
       }
 
-      // High motion quality boost at encoder level
-      amf_cfg.high_motion_quality_boost_enable = true;
+      // High motion quality boost at encoder level (unless SFE mode forces it off)
+      if (!(amf_cfg.sfe_mode && *amf_cfg.sfe_mode)) {
+        amf_cfg.high_motion_quality_boost_enable = true;
+      }
 
       if (!amf_d3d->create_encoder(amf_cfg, client_config, colorspace, buffer_format)) return false;
 

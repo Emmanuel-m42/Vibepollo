@@ -58,6 +58,9 @@ namespace amf {
     // Enable Smart Access Video (multi-VCN scheduling when supported by HW/driver)
     std::optional<int> smart_access_video;
 
+    // SFE mode request (multi-HW-instance split-frame hint)
+    std::optional<int> sfe_mode;
+
     // Number of LTR frames for RFI
     int max_ltr_frames = 1;
 

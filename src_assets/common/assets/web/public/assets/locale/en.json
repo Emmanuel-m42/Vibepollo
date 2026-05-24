@@ -177,6 +177,8 @@
     "amd_vbaq_desc": "The human visual system is typically less sensitive to artifacts in highly textured areas. In VBAQ mode, pixel variance is used to indicate the complexity of spatial textures, allowing the encoder to allocate more bits to smoother areas. Enabling this feature leads to improvements in subjective visual quality with some content.",
     "amd_smart_access_video": "AMF Smart Access Video",
     "amd_smart_access_video_desc": "Attempts to distribute encoding work across multiple AMD encoder engines (VCN) when supported by your GPU and driver. If unsupported, Vibepollo will fall back automatically.",
+    "amd_sfe_mode": "AMF Split Frame Encode (SFE) Mode",
+    "amd_sfe_mode_desc": "When enabled, Vibepollo requests split-frame encoding (HEVC/AV1) and automatically applies compatibility-safe settings. Conflicting controls are locked while this mode is on.",
     "apply_note": "Click 'Apply' to restart Vibepollo and apply changes. This will terminate any running sessions.",
     "audio_sink": "Audio Sink",
     "audio_sink_desc_linux": "The name of the audio sink used for Audio Loopback. If you do not specify this variable, pulseaudio will select the default monitor device. You can find the name of the audio sink using either command:",

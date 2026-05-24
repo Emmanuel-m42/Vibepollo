@@ -943,6 +943,8 @@ const ALLOWED_OVERRIDE_KEYS = new Set<string>([
   'amd_quality',
   'amd_preanalysis',
   'amd_vbaq',
+  'amd_smart_access_video',
+  'amd_sfe_mode',
   'amd_coder',
   'vt_coder',
   'vt_software',

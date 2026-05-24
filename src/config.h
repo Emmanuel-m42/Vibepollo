@@ -89,6 +89,7 @@ namespace config {
       std::optional<int> amd_preanalysis;
       std::optional<int> amd_vbaq;
       std::optional<int> amd_smart_access_video;
+      std::optional<int> amd_sfe_mode;
       int amd_coder;
       int amd_qvbr_quality = 23;  // QVBR quality level 1-51 (lower=better, default=23)
     } amd;

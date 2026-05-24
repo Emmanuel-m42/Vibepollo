@@ -336,6 +336,33 @@ namespace amf {
       }
     }
 
+    if (config.sfe_mode && *config.sfe_mode) {
+      AMF_RESULT sfe_res = AMF_NOT_SUPPORTED;
+      if (video_format == 1) {
+        #ifdef AMF_VIDEO_ENCODER_HEVC_MULTI_HW_INSTANCE_ENCODE
+        sfe_res = encoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_MULTI_HW_INSTANCE_ENCODE, true);
+        #else
+        sfe_res = encoder->SetProperty(L"HevcMultiHwInstanceEncode", true);
+        #endif
+      }
+      else if (video_format == 2) {
+        #ifdef AMF_VIDEO_ENCODER_AV1_MULTI_HW_INSTANCE_ENCODE
+        sfe_res = encoder->SetProperty(AMF_VIDEO_ENCODER_AV1_MULTI_HW_INSTANCE_ENCODE, true);
+        #else
+        sfe_res = encoder->SetProperty(L"AV1MultiHwInstanceEncode", true);
+        #endif
+      }
+
+      if (video_format == 1 || video_format == 2) {
+        if (sfe_res == AMF_OK) {
+          BOOST_LOG(info) << "AMF: split-frame encode requested";
+        }
+        else {
+          BOOST_LOG(warning) << "AMF: split-frame encode request was not accepted (error " << sfe_res << ")";
+        }
+      }
+    }
+
     // Color space properties
     if (video_format == 0) {
       encoder->SetProperty(AMF_VIDEO_ENCODER_FULL_RANGE_COLOR, colorspace.full_range);

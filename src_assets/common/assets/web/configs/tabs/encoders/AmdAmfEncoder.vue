@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import ConfigFieldRenderer from '@/ConfigFieldRenderer.vue';
 import { useConfigStore } from '@/stores/config';
 
 const store = useConfigStore();
 const config = store.config;
+const isSfeEnabled = computed(() => config.amd_sfe_mode === 'enabled');
 </script>
 
 <template>
@@ -16,13 +18,19 @@ const config = store.config;
       </div>
       <div class="p-4">
         <ConfigFieldRenderer setting-key="amd_usage" v-model="config.amd_usage" class="mb-6" />
+        <ConfigFieldRenderer setting-key="amd_sfe_mode" v-model="config.amd_sfe_mode" class="mb-6" />
 
         <section class="border-t border-dark/10 pt-5 dark:border-light/10">
           <h4 class="group-heading">
             {{ $t('config.amd_rc_group') }}
           </h4>
 
-          <ConfigFieldRenderer setting-key="amd_rc" v-model="config.amd_rc" class="mb-4" />
+          <ConfigFieldRenderer
+            setting-key="amd_rc"
+            v-model="config.amd_rc"
+            :disabled="isSfeEnabled"
+            class="mb-4"
+          />
 
           <ConfigFieldRenderer
             setting-key="amd_enforce_hrd"
@@ -34,6 +42,7 @@ const config = store.config;
             v-if="config.amd_rc === 'qvbr'"
             setting-key="amd_qvbr_quality"
             v-model="config.amd_qvbr_quality"
+            :disabled="isSfeEnabled"
             class="mt-4 mb-0"
           />
         </section>
@@ -48,6 +57,7 @@ const config = store.config;
           <ConfigFieldRenderer
             setting-key="amd_preanalysis"
             v-model="config.amd_preanalysis"
+            :disabled="isSfeEnabled"
             class="mb-3"
           />
 
