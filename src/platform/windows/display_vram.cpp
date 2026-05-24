@@ -21,7 +21,10 @@ extern "C" {
 #include "misc.h"
 #include "src/config.h"
 #include "src/logging.h"
-#include "src/nvenc/win/nvenc_dynamic_factory.h"
+#include "src/nvenc/nvenc_config.h"
+#include "src/nvenc/nvenc_d3d11_native.h"
+#include "src/nvenc/nvenc_d3d11_on_cuda.h"
+#include "src/nvenc/nvenc_utils.h"
 #include "src/amf/amf_d3d11.h"
 #include "src/video.h"
 

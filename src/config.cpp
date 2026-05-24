@@ -2226,6 +2226,7 @@ namespace config {
         "amd_quality",
         "amd_preanalysis",
         "amd_vbaq",
+        "amd_qvbr_quality",
         "amd_coder",
         "vt_coder",
         "vt_software",
