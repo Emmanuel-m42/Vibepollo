@@ -43,6 +43,10 @@ namespace platf::dxgi {
     capture_comp = nullptr;
     context = nullptr;
     captured_surface = nullptr;
+    if (amfrt_lib) {
+      FreeLibrary(amfrt_lib);
+      amfrt_lib = nullptr;
+    }
   }
 
   capture_e amd_capture_t::release_frame() {
@@ -88,13 +92,13 @@ namespace platf::dxgi {
   }
 
   int amd_capture_t::init(display_base_t *display, const ::video::config_t &config, int output_index) {
-    amfrt_lib.reset(LoadLibraryW(AMF_DLL_NAME));
+    amfrt_lib = LoadLibraryW(AMF_DLL_NAME);
     if (!amfrt_lib) {
       return -1;
     }
 
-    auto fn_query_version = (AMFQueryVersion_Fn) GetProcAddress((HMODULE) amfrt_lib.get(), AMF_QUERY_VERSION_FUNCTION_NAME);
-    auto fn_init = (AMFInit_Fn) GetProcAddress((HMODULE) amfrt_lib.get(), AMF_INIT_FUNCTION_NAME);
+    auto fn_query_version = (AMFQueryVersion_Fn) GetProcAddress(amfrt_lib, AMF_QUERY_VERSION_FUNCTION_NAME);
+    auto fn_init = (AMFInit_Fn) GetProcAddress(amfrt_lib, AMF_INIT_FUNCTION_NAME);
     if (!fn_query_version || !fn_init) {
       BOOST_LOG(error) << "AMD DirectCapture: missing required AMF runtime functions";
       return -1;

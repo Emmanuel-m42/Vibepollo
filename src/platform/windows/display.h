@@ -366,7 +366,7 @@ namespace platf::dxgi {
     capture_e next_frame(std::chrono::milliseconds timeout, amf::AMFData **out);
     capture_e release_frame();
 
-    hmodule_t amfrt_lib;
+    HMODULE amfrt_lib = nullptr;
     amf_uint64 amf_version = 0;
     amf::AMFFactory *amf_factory = nullptr;
 
