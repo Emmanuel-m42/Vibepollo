@@ -754,7 +754,7 @@ namespace video {
     }
 
     void
-    set_bitrate(int bitrate_kbps) override {
+    set_bitrate(int bitrate_kbps) {
       if (device && device->amf) {
         auto adjusted_bitrate_kbps = bitrate_kbps;
         if (config::stream.fec_percentage <= 80) {
@@ -765,19 +765,6 @@ namespace video {
         BOOST_LOG(info) << "AMF standalone encoder bitrate changed to: " << adjusted_bitrate_kbps
                         << " Kbps (requested: " << bitrate_kbps << " Kbps, FEC: "
                         << config::stream.fec_percentage << "%)";
-      }
-    }
-
-    void
-    set_dynamic_param(const dynamic_param_t &param) override {
-      if (!device || !device->amf) return;
-
-      switch (param.type) {
-        case dynamic_param_type_e::BITRATE:
-          set_bitrate(param.value.int_value);
-          break;
-        default:
-          break;
       }
     }
 
@@ -2485,7 +2472,7 @@ namespace video {
         amf_metadata.maxFrameAverageLightLevel = hdr_metadata.maxFrameAverageLightLevel;
         encode_device->amf->set_hdr_metadata(amf_metadata);
         BOOST_LOG(info) << "AMF: HDR metadata set - max luminance: " << amf_metadata.maxDisplayLuminance
-                        << " nits, mode: " << (colorspace_is_hlg(encode_device->colorspace) ? "HLG" : "PQ");
+                        << " nits";
       }
     }
 
