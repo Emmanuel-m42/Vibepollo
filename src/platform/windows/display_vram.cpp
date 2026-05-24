@@ -1191,14 +1191,12 @@ namespace platf::dxgi {
       if (!amf_d3d->create_encoder(amf_cfg, client_config, colorspace, buffer_format)) return false;
 
       base.apply_colorspace(colorspace);
-      return base.init_output(static_cast<ID3D11Texture2D *>(amf_d3d->get_input_texture()), client_config.width, client_config.height, colorspace, is_probe) == 0;
+      return base.init_output(static_cast<ID3D11Texture2D *>(amf_d3d->get_input_texture()), client_config.width, client_config.height) == 0;
     }
 
     int
     convert(platf::img_t &img_base) override {
-      int result = base.convert(img_base);
-      hdr_luminance_stats = base.hdr_luminance_stats_out;
-      return result;
+      return base.convert(img_base);
     }
 
   private:
