@@ -337,6 +337,29 @@ namespace amf {
     }
 
     if (config.sfe_mode && *config.sfe_mode) {
+      if (video_format == 1) {
+        // SFE checklist hard-lock for HEVC:
+        // OUTPUT_MODE == FRAME and PICTURE_TRANSFER_MODE == OFF.
+        #ifdef AMF_VIDEO_ENCODER_HEVC_OUTPUT_MODE
+        encoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_OUTPUT_MODE, (amf_int64) AMF_VIDEO_ENCODER_HEVC_OUTPUT_MODE_FRAME);
+        #else
+        encoder->SetProperty(L"HevcOutputMode", (amf_int64) 0);
+        #endif
+        #ifdef AMF_VIDEO_ENCODER_HEVC_PICTURE_TRANSFER_MODE
+        encoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_PICTURE_TRANSFER_MODE, (amf_int64) AMF_VIDEO_ENCODER_HEVC_PICTURE_TRANSFER_MODE_OFF);
+        #else
+        encoder->SetProperty(L"HevcPicTransferMode", (amf_int64) 0);
+        #endif
+      }
+      else if (video_format == 2) {
+        // AV1 supports output mode; lock to FRAME output for SFE compatibility.
+        #ifdef AMF_VIDEO_ENCODER_AV1_OUTPUT_MODE
+        encoder->SetProperty(AMF_VIDEO_ENCODER_AV1_OUTPUT_MODE, (amf_int64) AMF_VIDEO_ENCODER_AV1_OUTPUT_MODE_FRAME);
+        #else
+        encoder->SetProperty(L"AV1OutputMode", (amf_int64) 0);
+        #endif
+      }
+
       AMF_RESULT sfe_res = AMF_NOT_SUPPORTED;
       if (video_format == 1) {
         #ifdef AMF_VIDEO_ENCODER_HEVC_MULTI_HW_INSTANCE_ENCODE
