@@ -7,6 +7,7 @@
 #include "amf_encoder.h"
 
 #include <d3d11.h>
+#include <deque>
 #include <memory>
 #include <string>
 
@@ -92,6 +93,11 @@ namespace amf {
 
     // Whether the driver supports QUERY_TIMEOUT (FFmpeg-style safety check)
     bool query_timeout_supported = false;
+    static constexpr int HWSURFACES_IN_QUEUE_MAX = 16;
+    int hwsurfaces_in_queue = 0;
+    int consecutive_submit_failures = 0;
+    int consecutive_no_output_frames = 0;
+    int max_consecutive_failures = 60;
 
     // Current LTR state for RFI
     static constexpr int MAX_LTR_SLOTS = 2;
@@ -101,8 +107,8 @@ namespace amf {
     bool ltr_slots_valid[MAX_LTR_SLOTS] = {};
     uint64_t ltr_slot_frame_index[MAX_LTR_SLOTS] = {};  // Frame index when each LTR slot was marked
 
-    // Pending output stashed during SubmitInput retry
-    ::amf::AMFDataPtr pending_output;
+    // Pending outputs stashed during proactive/retry draining.
+    std::deque<::amf::AMFDataPtr> pending_outputs;
 
     // Statistics feedback state
     bool statistics_enabled = false;
