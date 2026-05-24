@@ -2033,6 +2033,10 @@ namespace video {
     std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
   ) {
     auto encoded_frame = session.encode_frame(frame_nr);
+    if (encoded_frame.fatal) {
+      BOOST_LOG(error) << "AMF encoder entered fatal state; forcing reinit";
+      return -1;
+    }
     if (encoded_frame.data.empty()) {
       if (encoded_frame.frame_index == static_cast<uint64_t>(frame_nr)) {
         BOOST_LOG(debug) << "AMF: frame " << frame_nr << " buffered, waiting for more input";

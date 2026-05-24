@@ -5,6 +5,7 @@
 
 #include "amf_d3d11.h"
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -684,6 +685,11 @@ namespace amf {
     for (auto &fi : ltr_slot_frame_index) fi = 0;
     current_ltr_slot = 0;
     rfi_pending = false;
+    hwsurfaces_in_queue = 0;
+    pending_outputs.clear();
+    consecutive_submit_failures = 0;
+    consecutive_no_output_frames = 0;
+    max_consecutive_failures = std::max(30, client_config.framerate);
 
     auto codec_name = (video_format == 0) ? "H.264" :
                       (video_format == 1) ? "HEVC" :
@@ -696,7 +702,10 @@ namespace amf {
 
   void
   amf_d3d11::destroy_encoder() {
-    pending_output = nullptr;
+    pending_outputs.clear();
+    hwsurfaces_in_queue = 0;
+    consecutive_submit_failures = 0;
+    consecutive_no_output_frames = 0;
     if (encoder) {
       encoder->Terminate();
       encoder = nullptr;
@@ -734,6 +743,11 @@ namespace amf {
     ::amf::AMFSurfacePtr surface;
     auto res = context->CreateSurfaceFromDX11Native(input_texture, &surface, nullptr);
     if (res != AMF_OK || !surface) {
+      const auto device_removed_reason = device ? device->GetDeviceRemovedReason() : S_OK;
+      if (device_removed_reason != S_OK) {
+        BOOST_LOG(error) << "AMF: device lost while creating surface, HRESULT: 0x" << std::hex << device_removed_reason;
+        result.fatal = true;
+      }
       BOOST_LOG(error) << "AMF: CreateSurfaceFromDX11Native failed, error: " << res;
       return result;
     }
@@ -808,16 +822,39 @@ namespace amf {
       current_ltr_slot = (current_ltr_slot + 1) % effective_ltr_slots;
     }
 
+    // Proactive backpressure: drain one output when in-flight surfaces hit a safe threshold.
+    while (hwsurfaces_in_queue >= HWSURFACES_IN_QUEUE_MAX) {
+      ::amf::AMFDataPtr drain_data;
+      auto drain_res = encoder->QueryOutput(&drain_data);
+      if (drain_data) {
+        pending_outputs.emplace_back(drain_data);
+        hwsurfaces_in_queue = std::max(0, hwsurfaces_in_queue - 1);
+        break;
+      }
+      if (drain_res == AMF_REPEAT || drain_res == AMF_NEED_MORE_INPUT) {
+        break;
+      }
+      if (!query_timeout_supported) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+      break;
+    }
+
     // Submit input — retry with output draining if input queue is full (like FFmpeg)
     res = encoder->SubmitInput(surface);
-    if (res == AMF_INPUT_FULL) {
+    auto is_input_full = (res == AMF_INPUT_FULL);
+#ifdef AMF_DECODER_NO_FREE_SURFACES
+    is_input_full = is_input_full || (res == AMF_DECODER_NO_FREE_SURFACES);
+#endif
+    if (is_input_full) {
       // Drain output to free up space in the encoder queue, then retry
-      for (int retry = 0; retry < 20 && res == AMF_INPUT_FULL; ++retry) {
+      for (int retry = 0; retry < 20 && is_input_full; ++retry) {
         ::amf::AMFDataPtr drain_data;
         auto drain_res = encoder->QueryOutput(&drain_data);
         if (drain_data) {
           // Stash the output for later retrieval
-          pending_output = drain_data;
+          pending_outputs.emplace_back(drain_data);
+          hwsurfaces_in_queue = std::max(0, hwsurfaces_in_queue - 1);
         }
         if (drain_res != AMF_OK && !drain_data) {
           if (!query_timeout_supported) {
@@ -825,22 +862,50 @@ namespace amf {
           }
         }
         res = encoder->SubmitInput(surface);
+        is_input_full = (res == AMF_INPUT_FULL);
+#ifdef AMF_DECODER_NO_FREE_SURFACES
+        is_input_full = is_input_full || (res == AMF_DECODER_NO_FREE_SURFACES);
+#endif
       }
-      if (res == AMF_INPUT_FULL) {
-        BOOST_LOG(warning) << "AMF: SubmitInput still AMF_INPUT_FULL after retries, dropping frame " << frame_index;
+      if (is_input_full) {
+        consecutive_submit_failures++;
+        if (consecutive_submit_failures >= max_consecutive_failures) {
+          BOOST_LOG(error) << "AMF: SubmitInput remained full for " << consecutive_submit_failures
+                           << " frames; forcing encoder reinit";
+          result.fatal = true;
+        } else {
+          BOOST_LOG(warning) << "AMF: SubmitInput still AMF_INPUT_FULL after retries, dropping frame " << frame_index;
+        }
         return result;
       }
     }
-    if (res != AMF_OK) {
-      BOOST_LOG(error) << "AMF: SubmitInput failed, error: " << res;
+
+    if (res == AMF_NEED_MORE_INPUT) {
+      hwsurfaces_in_queue++;
+      consecutive_submit_failures = 0;
       return result;
     }
 
+    if (res != AMF_OK && res != AMF_REPEAT) {
+      consecutive_submit_failures++;
+      const auto device_removed_reason = device ? device->GetDeviceRemovedReason() : S_OK;
+      if (device_removed_reason != S_OK) {
+        BOOST_LOG(error) << "AMF: device lost during SubmitInput, HRESULT: 0x" << std::hex << device_removed_reason;
+        result.fatal = true;
+      } else if (consecutive_submit_failures >= max_consecutive_failures) {
+        result.fatal = true;
+      }
+      BOOST_LOG(error) << "AMF: SubmitInput failed, error: " << res;
+      return result;
+    }
+    hwsurfaces_in_queue++;
+    consecutive_submit_failures = 0;
+
     // Query output — if we already drained output during SubmitInput retry, use that
     ::amf::AMFDataPtr output_data;
-    if (pending_output) {
-      output_data = pending_output;
-      pending_output = nullptr;
+    if (!pending_outputs.empty()) {
+      output_data = pending_outputs.front();
+      pending_outputs.pop_front();
     }
     else {
       // Poll with retry: encoder may need a moment after SubmitInput
@@ -857,9 +922,17 @@ namespace amf {
       }
       if (!output_data) {
         // Encoder needs more input or no output yet (pipeline filling)
+        consecutive_no_output_frames++;
+        if (consecutive_no_output_frames >= max_consecutive_failures) {
+          BOOST_LOG(error) << "AMF: no output for " << consecutive_no_output_frames
+                           << " frames; forcing encoder reinit";
+          result.fatal = true;
+        }
         return result;
       }
     }
+    hwsurfaces_in_queue = std::max(0, hwsurfaces_in_queue - 1);
+    consecutive_no_output_frames = 0;
 
     // Extract encoded bitstream
     ::amf::AMFBufferPtr buffer(output_data);
