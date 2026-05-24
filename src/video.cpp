@@ -2023,7 +2023,15 @@ namespace video {
   }
 
   int
-  encode_amf(int64_t frame_nr, amf_encode_session_t &session, safe::mail_raw_t::queue_t<packet_t> &packets, void *channel_data, std::optional<std::chrono::steady_clock::time_point> frame_timestamp) {
+  encode_amf(
+    int64_t frame_nr,
+    amf_encode_session_t &session,
+    safe::mail_raw_t::queue_t<packet_t> &packets,
+    void *channel_data,
+    std::optional<std::chrono::steady_clock::time_point> frame_timestamp,
+    std::optional<std::chrono::steady_clock::time_point> capture_timestamp,
+    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
+  ) {
     auto encoded_frame = session.encode_frame(frame_nr);
     if (encoded_frame.data.empty()) {
       if (encoded_frame.frame_index == static_cast<uint64_t>(frame_nr)) {
@@ -2042,6 +2050,8 @@ namespace video {
     packet->channel_data = channel_data;
     packet->after_ref_frame_invalidation = encoded_frame.after_ref_frame_invalidation;
     packet->frame_timestamp = frame_timestamp;
+    packet->capture_timestamp = capture_timestamp ? capture_timestamp : frame_timestamp;
+    packet->host_processing_timestamp = host_processing_timestamp;
     packets->raise(std::move(packet));
 
     return 0;
@@ -2063,7 +2073,7 @@ namespace video {
       return encode_nvenc(frame_nr, *nvenc_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
     }
     else if (auto amf_session = dynamic_cast<amf_encode_session_t *>(&session)) {
-      return encode_amf(frame_nr, *amf_session, packets, channel_data, frame_timestamp);
+      return encode_amf(frame_nr, *amf_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
     }
 
     return -1;
