@@ -588,6 +588,61 @@ namespace amf {
       BOOST_LOG(info) << "AMF: QUERY_TIMEOUT " << (query_timeout_supported ? "supported" : "not supported") << " (value=" << qt_val << ")";
     }
 
+    if (config.sfe_mode && *config.sfe_mode && (video_format == 1 || video_format == 2)) {
+      auto log_sfe_prop = [this](const wchar_t *name, const char *label) {
+        amf_int64 value = -1;
+        const auto prop_res = encoder->GetProperty(name, &value);
+        if (prop_res == AMF_OK) {
+          BOOST_LOG(info) << "AMF SFE: " << label << "=" << value;
+        }
+        else {
+          BOOST_LOG(warning) << "AMF SFE: failed to read " << label << " (error " << prop_res << ")";
+        }
+      };
+
+      if (video_format == 1) {
+        #ifdef AMF_VIDEO_ENCODER_HEVC_MULTI_HW_INSTANCE_ENCODE
+        log_sfe_prop(AMF_VIDEO_ENCODER_HEVC_MULTI_HW_INSTANCE_ENCODE, "hevc_multi_hw_instance_encode");
+        #else
+        log_sfe_prop(L"HevcMultiHwInstanceEncode", "hevc_multi_hw_instance_encode");
+        #endif
+        #ifdef AMF_VIDEO_ENCODER_HEVC_PREENCODE_ENABLE
+        log_sfe_prop(AMF_VIDEO_ENCODER_HEVC_PREENCODE_ENABLE, "hevc_preencode_enable");
+        #else
+        log_sfe_prop(L"HevcRateControlPreAnalysisEnable", "hevc_preencode_enable");
+        #endif
+        #ifdef AMF_VIDEO_ENCODER_HEVC_OUTPUT_MODE
+        log_sfe_prop(AMF_VIDEO_ENCODER_HEVC_OUTPUT_MODE, "hevc_output_mode");
+        #else
+        log_sfe_prop(L"HevcOutputMode", "hevc_output_mode");
+        #endif
+        #ifdef AMF_VIDEO_ENCODER_HEVC_PICTURE_TRANSFER_MODE
+        log_sfe_prop(AMF_VIDEO_ENCODER_HEVC_PICTURE_TRANSFER_MODE, "hevc_picture_transfer_mode");
+        #else
+        log_sfe_prop(L"HevcPicTransferMode", "hevc_picture_transfer_mode");
+        #endif
+        log_sfe_prop(AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD, "hevc_rate_control_method");
+      }
+      else {
+        #ifdef AMF_VIDEO_ENCODER_AV1_MULTI_HW_INSTANCE_ENCODE
+        log_sfe_prop(AMF_VIDEO_ENCODER_AV1_MULTI_HW_INSTANCE_ENCODE, "av1_multi_hw_instance_encode");
+        #else
+        log_sfe_prop(L"Av1MultiHwInstanceEncode", "av1_multi_hw_instance_encode");
+        #endif
+        #ifdef AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_PREENCODE
+        log_sfe_prop(AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_PREENCODE, "av1_rate_control_preencode");
+        #else
+        log_sfe_prop(L"Av1RateControlPreEncode", "av1_rate_control_preencode");
+        #endif
+        #ifdef AMF_VIDEO_ENCODER_AV1_OUTPUT_MODE
+        log_sfe_prop(AMF_VIDEO_ENCODER_AV1_OUTPUT_MODE, "av1_output_mode");
+        #else
+        log_sfe_prop(L"AV1OutputMode", "av1_output_mode");
+        #endif
+        log_sfe_prop(AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_METHOD, "av1_rate_control_method");
+      }
+    }
+
     // Create input texture for the rendering pipeline to write to.
     // Must match the YUV format that the shader pipeline outputs (NV12/P010).
     DXGI_FORMAT dxgi_fmt;
