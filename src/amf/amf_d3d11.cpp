@@ -350,6 +350,12 @@ namespace amf {
         #else
         encoder->SetProperty(L"HevcPicTransferMode", (amf_int64) 0);
         #endif
+        // PREENCODE_ENABLE must be false for SFE eligibility.
+        #ifdef AMF_VIDEO_ENCODER_HEVC_PREENCODE_ENABLE
+        encoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_PREENCODE_ENABLE, false);
+        #else
+        encoder->SetProperty(L"HevcRateControlPreAnalysisEnable", false);
+        #endif
       }
       else if (video_format == 2) {
         // AV1 supports output mode; lock to FRAME output for SFE compatibility.
@@ -357,6 +363,12 @@ namespace amf {
         encoder->SetProperty(AMF_VIDEO_ENCODER_AV1_OUTPUT_MODE, (amf_int64) AMF_VIDEO_ENCODER_AV1_OUTPUT_MODE_FRAME);
         #else
         encoder->SetProperty(L"AV1OutputMode", (amf_int64) 0);
+        #endif
+        // AV1 pre-encode assist must be disabled for SFE eligibility.
+        #ifdef AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_PREENCODE
+        encoder->SetProperty(AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_PREENCODE, false);
+        #else
+        encoder->SetProperty(L"Av1RateControlPreEncode", false);
         #endif
       }
 
