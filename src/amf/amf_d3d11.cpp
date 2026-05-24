@@ -559,19 +559,41 @@ namespace amf {
     encode_width = client_config.width;
     encode_height = client_config.height;
     res = encoder->Init(amf_format, client_config.width, client_config.height);
-    if (res != AMF_OK && config.rc_mode) {
-      // Init failed with custom RC mode - retry without it (driver may not support it)
-      BOOST_LOG(warning) << "AMF: Init failed with rc_mode=" << *config.rc_mode << ", retrying with default RC";
-      encoder->Terminate();
-      encoder = nullptr;
-      res = factory->CreateComponent(context, get_codec_id(), &encoder);
-      if (res == AMF_OK && encoder) {
-        auto config_fallback = config;
-        config_fallback.rc_mode = std::nullopt;
-        if (configure_encoder(config_fallback, client_config, colorspace)) {
-          res = encoder->Init(amf_format, client_config.width, client_config.height);
-        }
+    // Progressive, cumulative Init fallback chain. Once a feature is disabled,
+    // keep it disabled for later retries to avoid re-introducing the failure.
+    auto config_fallback = config;
+    auto retry_init_with = [&](const char *what, auto mutator) {
+      if (res == AMF_OK) {
+        return;
       }
+
+      BOOST_LOG(warning) << "AMF: Init failed (error " << res << "), retrying without " << what;
+      if (encoder) {
+        encoder->Terminate();
+        encoder = nullptr;
+      }
+      auto recreate_res = factory->CreateComponent(context, get_codec_id(), &encoder);
+      if (recreate_res != AMF_OK || !encoder) {
+        res = recreate_res;
+        return;
+      }
+
+      mutator(config_fallback);
+      if (!configure_encoder(config_fallback, client_config, colorspace)) {
+        res = AMF_FAIL;
+        return;
+      }
+      res = encoder->Init(amf_format, client_config.width, client_config.height);
+    };
+
+    if (res != AMF_OK && config.preanalysis && *config.preanalysis) {
+      retry_init_with("preanalysis", [](amf_config &c) { c.preanalysis = false; });
+    }
+    if (res != AMF_OK && config.rc_mode) {
+      retry_init_with("custom rc_mode", [](amf_config &c) { c.rc_mode = std::nullopt; });
+    }
+    if (res != AMF_OK && config.quality_preset) {
+      retry_init_with("quality_preset", [](amf_config &c) { c.quality_preset = std::nullopt; });
     }
     if (res != AMF_OK) {
       BOOST_LOG(error) << "AMF: encoder Init failed, error: " << res;
