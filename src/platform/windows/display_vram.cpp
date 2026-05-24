@@ -1171,6 +1171,7 @@ namespace platf::dxgi {
 
       amf_cfg.preanalysis = config::video.amd.amd_preanalysis;
       amf_cfg.vbaq = config::video.amd.amd_vbaq;
+      amf_cfg.smart_access_video = config::video.amd.amd_smart_access_video;
       amf_cfg.enforce_hrd = config::video.amd.amd_enforce_hrd;
       amf_cfg.h264_cabac = (config::video.amd.amd_coder != 2);  // 2 = CAVLC
       amf_cfg.max_ltr_frames = 1;  // Enable RFI

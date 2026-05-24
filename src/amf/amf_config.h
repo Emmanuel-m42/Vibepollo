@@ -55,6 +55,9 @@ namespace amf {
     // Enforce HRD
     std::optional<int> enforce_hrd;
 
+    // Enable Smart Access Video (multi-VCN scheduling when supported by HW/driver)
+    std::optional<int> smart_access_video;
+
     // Number of LTR frames for RFI
     int max_ltr_frames = 1;
 

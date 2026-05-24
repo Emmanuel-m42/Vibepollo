@@ -351,6 +351,13 @@ export function getConfigSelectOptions(
       ];
       return ensureIncludesCurrentValue(options, ctx.currentValue);
     }
+    case 'amd_smart_access_video': {
+      const options = [
+        { label: translateOr(t, '_common.disabled', 'Disabled'), value: 'disabled' },
+        { label: translateOr(t, '_common.enabled', 'Enabled'), value: 'enabled' },
+      ];
+      return ensureIncludesCurrentValue(options, ctx.currentValue);
+    }
     case 'vt_software': {
       const options = [
         { label: translateOr(t, '_common.auto', 'Auto'), value: 'auto' },

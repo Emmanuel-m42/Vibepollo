@@ -264,6 +264,7 @@ const defaultGroups = [
       amd_quality: 'balanced',
       amd_preanalysis: 'disabled',
       amd_vbaq: 'enabled',
+      amd_smart_access_video: 'disabled',
       amd_coder: 'auto',
     },
   },

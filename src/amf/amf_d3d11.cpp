@@ -318,6 +318,24 @@ namespace amf {
       }
     }
 
+    if (config.smart_access_video) {
+      // AMF property names from official docs:
+      // H.264: EnableSmartAccessVideo
+      // HEVC: HevcEnableSmartAccessVideo
+      // AV1: AV1EnableSmartAccessVideo
+      const wchar_t *smart_access_key = (video_format == 0) ? L"EnableSmartAccessVideo" :
+                                        (video_format == 1) ? L"HevcEnableSmartAccessVideo" :
+                                                              L"AV1EnableSmartAccessVideo";
+      const amf_bool enable_smart_access = !!(*config.smart_access_video);
+      const auto smart_access_res = encoder->SetProperty(smart_access_key, enable_smart_access);
+      if (smart_access_res == AMF_OK) {
+        BOOST_LOG(info) << "AMF: Smart Access Video " << (enable_smart_access ? "enabled" : "disabled");
+      } else {
+        BOOST_LOG(warning) << "AMF: Smart Access Video property unsupported/failed for this codec or driver (error "
+                           << smart_access_res << ")";
+      }
+    }
+
     // Color space properties
     if (video_format == 0) {
       encoder->SetProperty(AMF_VIDEO_ENCODER_FULL_RANGE_COLOR, colorspace.full_range);

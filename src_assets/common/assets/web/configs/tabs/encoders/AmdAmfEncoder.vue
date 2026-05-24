@@ -53,6 +53,12 @@ const config = store.config;
 
           <ConfigFieldRenderer setting-key="amd_vbaq" v-model="config.amd_vbaq" class="mb-3" />
 
+          <ConfigFieldRenderer
+            setting-key="amd_smart_access_video"
+            v-model="config.amd_smart_access_video"
+            class="mb-3"
+          />
+
           <ConfigFieldRenderer setting-key="amd_coder" v-model="config.amd_coder" class="mb-0" />
         </section>
       </div>

@@ -794,6 +794,7 @@ namespace config {
       (int) amd::quality_av1_e::balanced,  // quality (av1)
       0,  // preanalysis
       1,  // vbaq
+      0,  // smart_access_video
       (int) amd::coder_e::_auto,  // coder
       23,  // qvbr_quality (1-51, default 23)
     },  // amd
@@ -1618,6 +1619,7 @@ namespace config {
 
     bool_f(vars, "amd_preanalysis", (bool &) video.amd.amd_preanalysis);
     bool_f(vars, "amd_vbaq", (bool &) video.amd.amd_vbaq);
+    bool_f(vars, "amd_smart_access_video", (bool &) video.amd.amd_smart_access_video);
     bool_f(vars, "amd_enforce_hrd", (bool &) video.amd.amd_enforce_hrd);
     int_between_f(vars, "amd_qvbr_quality", video.amd.amd_qvbr_quality, { 1, 51 });
 
@@ -2226,6 +2228,7 @@ namespace config {
         "amd_quality",
         "amd_preanalysis",
         "amd_vbaq",
+        "amd_smart_access_video",
         "amd_qvbr_quality",
         "amd_coder",
         "vt_coder",
