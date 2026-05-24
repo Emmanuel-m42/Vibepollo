@@ -326,8 +326,9 @@ namespace amf {
       encoder->SetProperty(AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE, (amf_int64)(colorspace.full_range ? AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE_FULL : AMF_VIDEO_ENCODER_HEVC_NOMINAL_RANGE_STUDIO));
     }
     else {
-      // AV1: amf_bool type
-      encoder->SetProperty(AMF_VIDEO_ENCODER_AV1_OUTPUT_FULL_RANGE_COLOR, colorspace.full_range);
+      // Older AMF headers used in this tree do not expose an AV1-specific full-range key.
+      // Use the generic encoder key for compatibility.
+      encoder->SetProperty(AMF_VIDEO_ENCODER_FULL_RANGE_COLOR, colorspace.full_range);
     }
 
     // Color properties for bitstream metadata.
@@ -356,11 +357,6 @@ namespace amf {
       case video::colorspace_e::bt2020:
         amf_primaries = AMF_COLOR_PRIMARIES_BT2020;
         amf_transfer = AMF_COLOR_TRANSFER_CHARACTERISTIC_SMPTE2084;
-        amf_color_profile = colorspace.full_range ? AMF_VIDEO_CONVERTER_COLOR_PROFILE_FULL_2020 : AMF_VIDEO_CONVERTER_COLOR_PROFILE_2020;
-        break;
-      case video::colorspace_e::bt2020hlg:
-        amf_primaries = AMF_COLOR_PRIMARIES_BT2020;
-        amf_transfer = AMF_COLOR_TRANSFER_CHARACTERISTIC_ARIB_STD_B67;
         amf_color_profile = colorspace.full_range ? AMF_VIDEO_CONVERTER_COLOR_PROFILE_FULL_2020 : AMF_VIDEO_CONVERTER_COLOR_PROFILE_2020;
         break;
       default:
