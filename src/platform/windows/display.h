@@ -388,6 +388,11 @@ namespace platf::dxgi {
 
   private:
     amd_capture_t dup;
+    blend_t blend_invert;
+    blend_t blend_disable;
+    ps_t cursor_ps;
+    vs_t cursor_vs;
+    buf_t cursor_info;
     std::optional<int> monitor_index_from_display_name(const std::string &display_name);
   };
 
