@@ -1791,9 +1791,47 @@ namespace platf::dxgi {
 
   int
   display_amd_vram_t::init(const ::video::config_t &config, const std::string &display_name) {
-    if (display_base_t::init(config, display_name) || dup.init(this, config, output_index)) {
+    if (display_base_t::init(config, display_name)) {
       BOOST_LOG(error) << "AMD VRAM() failed";
       return -1;
+    }
+
+    int amf_monitor_index = output_index;
+    auto try_init_with_index = [&](int idx) -> bool {
+      if (!dup.init(this, config, idx)) {
+        BOOST_LOG(info) << "AMD DirectCapture: init succeeded with monitor_index=" << idx;
+        return true;
+      }
+      return false;
+    };
+
+    if (!try_init_with_index(amf_monitor_index)) {
+      // Compatibility retry: map currently selected DXGI output name back to adapter-local index.
+      int mapped_index = -1;
+      DXGI_OUTPUT_DESC selected_desc {};
+      output->GetDesc(&selected_desc);
+      output_t::pointer output_p {};
+      for (int idx = 0; adapter->EnumOutputs(idx, &output_p) != DXGI_ERROR_NOT_FOUND; ++idx) {
+        output_t out {output_p};
+        DXGI_OUTPUT_DESC desc {};
+        out->GetDesc(&desc);
+        if (wcscmp(desc.DeviceName, selected_desc.DeviceName) == 0) {
+          mapped_index = idx;
+          break;
+        }
+      }
+
+      if (mapped_index >= 0 && mapped_index != amf_monitor_index) {
+        BOOST_LOG(warning) << "AMD DirectCapture: retrying with mapped monitor_index=" << mapped_index
+                           << " (initial=" << amf_monitor_index << ')';
+        if (!try_init_with_index(mapped_index)) {
+          BOOST_LOG(error) << "AMD VRAM() failed";
+          return -1;
+        }
+      } else {
+        BOOST_LOG(error) << "AMD VRAM() failed";
+        return -1;
+      }
     }
 
     auto status = device->CreateVertexShader(simple_cursor_vs_hlsl->GetBufferPointer(), simple_cursor_vs_hlsl->GetBufferSize(), nullptr, &cursor_vs);
