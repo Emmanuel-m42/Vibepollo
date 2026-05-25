@@ -213,7 +213,7 @@ namespace platf::dxgi {
     // Keep same behavior as foundation baseline: present-synced + duplicate output.
     capture_comp->SetProperty(AMF_DISPLAYCAPTURE_MONITOR_INDEX, output_index);
     capture_comp->SetProperty(AMF_DISPLAYCAPTURE_FRAMERATE, AMFConstructRate(config.framerate, 1));
-    capture_comp->SetProperty(AMF_DISPLAYCAPTURE_MODE, AMF_DISPLAYCAPTURE_MODE_WAIT_FOR_PRESENT);
+    capture_comp->SetProperty(AMF_DISPLAYCAPTURE_MODE, AMF_DISPLAYCAPTURE_MODE_GET_CURRENT_SURFACE);
     capture_comp->SetProperty(AMF_DISPLAYCAPTURE_DUPLICATEOUTPUT, false);
 
     result = capture_comp->Init(amf::AMF_SURFACE_UNKNOWN, 0, 0);
