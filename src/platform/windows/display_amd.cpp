@@ -153,6 +153,9 @@ namespace platf::dxgi {
   int amd_capture_t::init(display_base_t *display, const ::video::config_t &config, int output_index) {
     amfrt_lib = LoadLibraryW(AMF_DLL_NAME);
     if (!amfrt_lib) {
+      auto err = GetLastError();
+      BOOST_LOG(error) << "AMD DirectCapture: failed to load AMF runtime DLL '" << AMF_DLL_NAMEA
+                       << "', GetLastError=0x" << util::hex(err).to_string_view();
       return -1;
     }
 
@@ -226,6 +229,8 @@ namespace platf::dxgi {
     capture_comp->GetProperty(AMF_DISPLAYCAPTURE_RESOLUTION, &resolution);
     display->capture_format = DXGI_FORMAT_UNKNOWN;
     BOOST_LOG(info) << "AMD DirectCapture: resolution [" << resolution.width << 'x' << resolution.height << ']';
+    BOOST_LOG(info) << "AMD DirectCapture: init succeeded (monitor_index=" << output_index
+                    << ", requested_fps=" << config.framerate << ")";
     return 0;
   }
 
@@ -252,6 +257,7 @@ namespace platf::dxgi {
 
   int display_amd_vram_t::init(const ::video::config_t &config, const std::string &display_name) {
     if (display_base_t::init(config, display_name)) {
+      BOOST_LOG(error) << "AMD DirectCapture: base display init failed";
       return -1;
     }
 
@@ -262,12 +268,14 @@ namespace platf::dxgi {
     }
 
     if (dup.init(this, config, *monitor_index)) {
+      BOOST_LOG(error) << "AMD DirectCapture: AMF capture component init failed";
       return -1;
     }
 
     auto vs_blob = compile_shader_file("simple_cursor_vs.hlsl", "main_vs", "vs_5_0");
     auto ps_blob = compile_shader_file("simple_cursor_ps.hlsl", "main_ps", "ps_5_0");
     if (!vs_blob || !ps_blob) {
+      BOOST_LOG(error) << "AMD DirectCapture: cursor shader compile failed";
       return -1;
     }
 
@@ -285,6 +293,7 @@ namespace platf::dxgi {
     blend_invert = make_blend(device.get(), true, true);
     blend_disable = make_blend(device.get(), false, false);
     if (!blend_invert || !blend_disable) {
+      BOOST_LOG(error) << "AMD DirectCapture: cursor blend state init failed";
       return -1;
     }
 
