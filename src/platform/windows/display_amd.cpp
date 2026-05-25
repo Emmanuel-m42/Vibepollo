@@ -3,6 +3,13 @@
  * @brief AMD Direct Capture backend.
  */
 
+#include "display.h"
+#include "display_vram.h"
+#include "misc.h"
+#include "src/config.h"
+#include "src/logging.h"
+#include "src/video.h"
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/hwcontext_d3d11va.h>
@@ -10,13 +17,6 @@ extern "C" {
 
 #include <d3dcompiler.h>
 #include <filesystem>
-
-#include "display.h"
-#include "display_vram.h"
-#include "misc.h"
-#include "src/config.h"
-#include "src/logging.h"
-#include "src/video.h"
 
 #include <AMF/components/DisplayCapture.h>
 #include <AMF/core/Trace.h>
