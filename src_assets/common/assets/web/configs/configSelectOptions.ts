@@ -194,6 +194,7 @@ export function getConfigSelectOptions(
       ];
       if (platform === 'windows') {
         options.push(
+          { label: 'AMD Direct Capture', value: 'amd' },
           { label: 'Windows Graphics Capture (variable)', value: 'wgc' },
           { label: 'Windows Graphics Capture (constant)', value: 'wgcc' },
           { label: 'Desktop Duplication API', value: 'ddx' },
