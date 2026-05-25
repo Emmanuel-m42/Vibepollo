@@ -680,6 +680,8 @@ namespace platf::dxgi {
 
           if (desc.AttachedToDesktop && (skip_dd_test || test_dxgi_duplication(adapter_tmp, output_tmp, false))) {
             output = std::move(output_tmp);
+            adapter_index = x;
+            output_index = y;
 
             offset_x = desc.DesktopCoordinates.left;
             offset_y = desc.DesktopCoordinates.top;

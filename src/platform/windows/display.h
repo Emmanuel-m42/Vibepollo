@@ -190,6 +190,8 @@ namespace platf::dxgi {
 
     int client_frame_rate {};
     DXGI_RATIONAL client_frame_rate_strict {0, 0};
+    int adapter_index {};
+    int output_index {};
 
     DXGI_FORMAT capture_format;
     D3D_FEATURE_LEVEL feature_level;
@@ -393,7 +395,6 @@ namespace platf::dxgi {
     ps_t cursor_ps;
     vs_t cursor_vs;
     buf_t cursor_info;
-    std::optional<int> monitor_index_from_display_name(const std::string &display_name);
   };
 
   /**

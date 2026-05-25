@@ -132,6 +132,8 @@ namespace platf::dxgi {
   blob_t cursor_ps_hlsl;
   blob_t cursor_ps_normalize_white_hlsl;
   blob_t cursor_vs_hlsl;
+  blob_t simple_cursor_vs_hlsl;
+  blob_t simple_cursor_ps_hlsl;
 
   struct texture_lock_helper {
     keyed_mutex_t _mutex;
@@ -1787,6 +1789,140 @@ namespace platf::dxgi {
     return 0;
   }
 
+  int
+  display_amd_vram_t::init(const ::video::config_t &config, const std::string &display_name) {
+    if (display_base_t::init(config, display_name) || dup.init(this, config, output_index)) {
+      BOOST_LOG(error) << "AMD VRAM() failed";
+      return -1;
+    }
+
+    auto status = device->CreateVertexShader(simple_cursor_vs_hlsl->GetBufferPointer(), simple_cursor_vs_hlsl->GetBufferSize(), nullptr, &cursor_vs);
+    if (status) {
+      BOOST_LOG(error) << "Failed to create simple cursor vertex shader [0x"sv << util::hex(status).to_string_view() << ']';
+      return -1;
+    }
+    status = device->CreatePixelShader(simple_cursor_ps_hlsl->GetBufferPointer(), simple_cursor_ps_hlsl->GetBufferSize(), nullptr, &cursor_ps);
+    if (status) {
+      BOOST_LOG(error) << "Failed to create simple cursor pixel shader [0x"sv << util::hex(status).to_string_view() << ']';
+      return -1;
+    }
+
+    blend_invert = make_blend(device.get(), true, true);
+    blend_disable = make_blend(device.get(), false, false);
+    if (!blend_disable || !blend_invert) {
+      return -1;
+    }
+
+    D3D11_BUFFER_DESC buffer_desc {
+      sizeof(float[16 / sizeof(float)]),
+      D3D11_USAGE_DEFAULT,
+      D3D11_BIND_CONSTANT_BUFFER,
+      0
+    };
+    buf_t::pointer cursor_info_p;
+    status = device->CreateBuffer(&buffer_desc, nullptr, &cursor_info_p);
+    if (status) {
+      BOOST_LOG(error) << "Failed to create cursor position buffer: [0x"sv << util::hex(status).to_string_view() << ']';
+      return -1;
+    }
+    cursor_info = buf_t {cursor_info_p};
+
+    return 0;
+  }
+
+  capture_e
+  display_amd_vram_t::snapshot(const pull_free_image_cb_t &pull_free_image_cb, std::shared_ptr<platf::img_t> &img_out, std::chrono::milliseconds timeout, bool cursor_visible) {
+    amf::AMFSurfacePtr output;
+    D3D11_TEXTURE2D_DESC desc;
+
+    CURSORINFO pt;
+    pt.cbSize = sizeof(CURSORINFO);
+
+    auto capture_status = dup.next_frame(timeout, (amf::AMFData **) &output);
+    if (capture_status != capture_e::ok) {
+      return capture_status;
+    }
+    dup.captured_surface = output;
+
+    texture2d_t src = (ID3D11Texture2D *) dup.captured_surface->GetPlaneAt(0)->GetNative();
+    src->GetDesc(&desc);
+
+    if (desc.Width != width_before_rotation || desc.Height != height_before_rotation) {
+      BOOST_LOG(info) << "Capture size changed ["sv << width << 'x' << height << " -> "sv << desc.Width << 'x' << desc.Height << ']';
+      return capture_e::reinit;
+    }
+
+    if (capture_format == DXGI_FORMAT_UNKNOWN) {
+      capture_format = desc.Format;
+      BOOST_LOG(info) << "AMD Capture format ["sv << dxgi_format_to_string(capture_format) << ']';
+    }
+
+    if (capture_format != desc.Format) {
+      BOOST_LOG(info) << "AMD Capture format changed ["sv << dxgi_format_to_string(capture_format) << " -> "sv << dxgi_format_to_string(desc.Format) << ']';
+      return capture_e::reinit;
+    }
+
+    std::shared_ptr<platf::img_t> img;
+    if (!pull_free_image_cb(img)) {
+      return capture_e::interrupted;
+    }
+
+    auto blend_cursor = [&](img_d3d_t &d3d_img) {
+      float new_cursor_data[16 / sizeof(float)] = {(float) pt.ptScreenPos.x, (float) pt.ptScreenPos.y, (float) width, (float) height};
+      device_ctx->UpdateSubresource(cursor_info.get(), 0, nullptr, &new_cursor_data, 0, 0);
+
+      device_ctx->VSSetConstantBuffers(0, 1, &cursor_info);
+      device_ctx->VSSetShader(cursor_vs.get(), nullptr, 0);
+      device_ctx->PSSetShader(cursor_ps.get(), nullptr, 0);
+      device_ctx->OMSetRenderTargets(1, &d3d_img.capture_rt, nullptr);
+      device_ctx->IASetInputLayout(nullptr);
+      device_ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+      device_ctx->OMSetBlendState(blend_invert.get(), nullptr, 0x00FFFFFFu);
+
+      device_ctx->Draw(3, 0);
+
+      ID3D11RenderTargetView *emptyRenderTarget = nullptr;
+      device_ctx->OMSetRenderTargets(1, &emptyRenderTarget, nullptr);
+      device_ctx->RSSetViewports(0, nullptr);
+      ID3D11ShaderResourceView *emptyShaderResourceView = nullptr;
+      device_ctx->PSSetShaderResources(0, 1, &emptyShaderResourceView);
+      device_ctx->OMSetBlendState(blend_disable.get(), nullptr, 0x00FFFFFFu);
+    };
+
+    auto d3d_img = std::static_pointer_cast<img_d3d_t>(img);
+    d3d_img->blank = false;
+    if (complete_img(d3d_img.get(), false) == 0) {
+      texture_lock_helper lock_helper(d3d_img->capture_mutex.get());
+      if (lock_helper.lock()) {
+        device_ctx->CopyResource(d3d_img->capture_texture.get(), src.get());
+        if (config::input.amf_draw_mouse_cursor) {
+          GetCursorInfo(&pt);
+          if (pt.flags == CURSOR_SHOWING) {
+            blend_cursor(*d3d_img);
+          }
+        }
+      } else {
+        return capture_e::error;
+      }
+    } else {
+      return capture_e::error;
+    }
+
+    img_out = img;
+    if (img_out) {
+      img_out->frame_timestamp = std::chrono::steady_clock::now();
+    }
+
+    src.release();
+    return capture_e::ok;
+  }
+
+  capture_e
+  display_amd_vram_t::release_snapshot() {
+    dup.release_frame();
+    return capture_e::ok;
+  }
+
   std::shared_ptr<display_t> display_wgc_vram_t::create(const ::video::config_t &config, const std::string &display_name) {
     return display_wgc_ipc_vram_t::create(config, display_name);
   }
@@ -2096,6 +2232,8 @@ namespace platf::dxgi {
     compile_pixel_shader_helper(cursor_ps);
     compile_pixel_shader_helper(cursor_ps_normalize_white);
     compile_vertex_shader_helper(cursor_vs);
+    compile_vertex_shader_helper(simple_cursor_vs);
+    compile_pixel_shader_helper(simple_cursor_ps);
 
     BOOST_LOG(info) << "Compiled shaders"sv;
 
