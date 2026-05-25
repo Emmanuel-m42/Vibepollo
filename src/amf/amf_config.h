@@ -60,6 +60,8 @@ namespace amf {
 
     // SFE mode request (multi-HW-instance split-frame hint)
     std::optional<int> sfe_mode;
+    // Gaze-driven foveation control plane enabled (AMD-only experimental path)
+    std::optional<int> gaze_foveation;
 
     // Number of LTR frames for RFI
     int max_ltr_frames = 1;

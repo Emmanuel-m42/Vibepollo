@@ -37,6 +37,36 @@ extern "C" {
 using namespace std::literals;
 
 namespace input {
+  constexpr std::uint32_t SS_GAZE_FOVEATION_MAGIC = 0x55000008;
+
+  #pragma pack(push, 1)
+  typedef struct _SS_GAZE_FOVEATION_PACKET {
+    NV_INPUT_HEADER header;
+    std::uint16_t version;
+    std::uint16_t flags;
+    std::uint32_t timestamp_ms;
+    std::uint16_t center_u_q15;
+    std::uint16_t center_v_q15;
+    std::uint16_t inner_r_q15;
+    std::uint16_t outer_r_q15;
+    std::uint8_t strength;
+    std::uint8_t profile;
+    std::uint16_t reserved;
+  } SS_GAZE_FOVEATION_PACKET, *PSS_GAZE_FOVEATION_PACKET;
+  #pragma pack(pop)
+
+  constexpr std::uint16_t SS_GAZE_FOVEATION_FLAG_ENABLED = 0x0001;
+  constexpr std::uint16_t SS_GAZE_FOVEATION_FLAG_VALID_TRACKING = 0x0002;
+
+  std::atomic_bool g_amd_gaze_enabled {false};
+  std::atomic_bool g_amd_gaze_valid_tracking {false};
+  std::atomic<std::uint32_t> g_amd_gaze_timestamp_ms {0};
+  std::atomic<std::uint32_t> g_amd_gaze_center_u_q15 {16384};
+  std::atomic<std::uint32_t> g_amd_gaze_center_v_q15 {16384};
+  std::atomic<std::uint32_t> g_amd_gaze_inner_r_q15 {3932};
+  std::atomic<std::uint32_t> g_amd_gaze_outer_r_q15 {9175};
+  std::atomic<std::uint32_t> g_amd_gaze_strength {50};
+  std::atomic<std::uint32_t> g_amd_gaze_profile {0};
 
   constexpr auto MAX_GAMEPADS = std::min((std::size_t) platf::MAX_GAMEPADS, sizeof(std::int16_t) * 8);
 #define DISABLE_LEFT_BUTTON_DELAY ((thread_pool_util::ThreadPool::task_id_t) 0x01)
@@ -240,6 +270,8 @@ namespace input {
         return packet_size_bounds_t {sizeof(SS_CONTROLLER_MOTION_PACKET), sizeof(SS_CONTROLLER_MOTION_PACKET)};
       case SS_CONTROLLER_BATTERY_MAGIC:
         return packet_size_bounds_t {sizeof(SS_CONTROLLER_BATTERY_PACKET), sizeof(SS_CONTROLLER_BATTERY_PACKET)};
+      case SS_GAZE_FOVEATION_MAGIC:
+        return packet_size_bounds_t {sizeof(SS_GAZE_FOVEATION_PACKET), sizeof(SS_GAZE_FOVEATION_PACKET)};
       default:
         return std::nullopt;
     }
@@ -478,6 +510,20 @@ namespace input {
       << "--end controller battery packet--"sv;
   }
 
+  void print(PSS_GAZE_FOVEATION_PACKET packet) {
+    BOOST_LOG(verbose)
+      << "--begin gaze foveation packet--"sv << std::endl
+      << "version ["sv << util::endian::little(packet->version) << ']' << std::endl
+      << "flags [0x"sv << util::hex(util::endian::little(packet->flags)).to_string_view() << ']' << std::endl
+      << "center_u_q15 ["sv << util::endian::little(packet->center_u_q15) << ']' << std::endl
+      << "center_v_q15 ["sv << util::endian::little(packet->center_v_q15) << ']' << std::endl
+      << "inner_r_q15 ["sv << util::endian::little(packet->inner_r_q15) << ']' << std::endl
+      << "outer_r_q15 ["sv << util::endian::little(packet->outer_r_q15) << ']' << std::endl
+      << "strength ["sv << (uint32_t) packet->strength << ']' << std::endl
+      << "profile ["sv << (uint32_t) packet->profile << ']' << std::endl
+      << "--end gaze foveation packet--"sv;
+  }
+
   void print(void *payload) {
     auto header = (PNV_INPUT_HEADER) payload;
 
@@ -525,6 +571,9 @@ namespace input {
         break;
       case SS_CONTROLLER_BATTERY_MAGIC:
         print((PSS_CONTROLLER_BATTERY_PACKET) payload);
+        break;
+      case SS_GAZE_FOVEATION_MAGIC:
+        print((PSS_GAZE_FOVEATION_PACKET) payload);
         break;
     }
   }
@@ -1166,6 +1215,28 @@ namespace input {
     platf::gamepad_battery(platf_input, battery);
   }
 
+  void passthrough(std::shared_ptr<input_t> &, PSS_GAZE_FOVEATION_PACKET packet) {
+    const auto flags = util::endian::little(packet->flags);
+    const auto enabled = (flags & SS_GAZE_FOVEATION_FLAG_ENABLED) != 0;
+    const auto valid_tracking = (flags & SS_GAZE_FOVEATION_FLAG_VALID_TRACKING) != 0;
+    const auto center_u_q15 = std::min<std::uint32_t>(util::endian::little(packet->center_u_q15), 32767);
+    const auto center_v_q15 = std::min<std::uint32_t>(util::endian::little(packet->center_v_q15), 32767);
+    const auto inner_r_q15 = std::min<std::uint32_t>(util::endian::little(packet->inner_r_q15), 32767);
+    const auto outer_r_q15 = std::min<std::uint32_t>(util::endian::little(packet->outer_r_q15), 32767);
+    const auto strength = std::min<std::uint32_t>(packet->strength, 100);
+    const auto profile = std::min<std::uint32_t>(packet->profile, 2);
+
+    g_amd_gaze_enabled.store(enabled, std::memory_order_release);
+    g_amd_gaze_valid_tracking.store(valid_tracking, std::memory_order_release);
+    g_amd_gaze_timestamp_ms.store(util::endian::little(packet->timestamp_ms), std::memory_order_release);
+    g_amd_gaze_center_u_q15.store(center_u_q15, std::memory_order_release);
+    g_amd_gaze_center_v_q15.store(center_v_q15, std::memory_order_release);
+    g_amd_gaze_inner_r_q15.store(inner_r_q15, std::memory_order_release);
+    g_amd_gaze_outer_r_q15.store(std::max<std::uint32_t>(outer_r_q15, inner_r_q15), std::memory_order_release);
+    g_amd_gaze_strength.store(strength, std::memory_order_release);
+    g_amd_gaze_profile.store(profile, std::memory_order_release);
+  }
+
   void passthrough(std::shared_ptr<input_t> &input, PNV_MULTI_CONTROLLER_PACKET packet) {
     if (!config::input.controller) {
       return;
@@ -1657,6 +1728,9 @@ namespace input {
       case SS_CONTROLLER_BATTERY_MAGIC:
         passthrough(input, (PSS_CONTROLLER_BATTERY_PACKET) payload);
         break;
+      case SS_GAZE_FOVEATION_MAGIC:
+        passthrough(input, (PSS_GAZE_FOVEATION_PACKET) payload);
+        break;
     }
 
     bool schedule_next = false;
@@ -1700,6 +1774,7 @@ namespace input {
         case SS_CONTROLLER_TOUCH_MAGIC:
         case SS_CONTROLLER_MOTION_MAGIC:
         case SS_CONTROLLER_BATTERY_MAGIC:
+        case SS_GAZE_FOVEATION_MAGIC:
           if (!(permission & crypto::PERM::input_controller)) {
             return;
           } else {
@@ -1756,6 +1831,20 @@ namespace input {
     return validate_packet(input_data).has_value();
   }
 #endif
+
+  amd_gaze_foveation_state_t get_amd_gaze_foveation_state() {
+    amd_gaze_foveation_state_t state;
+    state.enabled = g_amd_gaze_enabled.load(std::memory_order_acquire);
+    state.valid_tracking = g_amd_gaze_valid_tracking.load(std::memory_order_acquire);
+    state.timestamp_ms = g_amd_gaze_timestamp_ms.load(std::memory_order_acquire);
+    state.center_u = g_amd_gaze_center_u_q15.load(std::memory_order_acquire) / 32767.0f;
+    state.center_v = g_amd_gaze_center_v_q15.load(std::memory_order_acquire) / 32767.0f;
+    state.inner_radius = g_amd_gaze_inner_r_q15.load(std::memory_order_acquire) / 32767.0f;
+    state.outer_radius = g_amd_gaze_outer_r_q15.load(std::memory_order_acquire) / 32767.0f;
+    state.strength = static_cast<std::uint8_t>(g_amd_gaze_strength.load(std::memory_order_acquire));
+    state.profile = static_cast<std::uint8_t>(g_amd_gaze_profile.load(std::memory_order_acquire));
+    return state;
+  }
 
   void reset(std::shared_ptr<input_t> &input) {
     task_pool.cancel(key_press_repeat_id);

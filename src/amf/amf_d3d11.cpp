@@ -17,6 +17,7 @@
 #include <AMF/core/Surface.h>
 
 #include "src/config.h"
+#include "src/input.h"
 #include "src/logging.h"
 
 namespace amf {
@@ -520,6 +521,7 @@ namespace amf {
     // Determine video format from client config
     video_format = client_config.videoFormat;
     current_config = client_config;
+    gaze_foveation_enabled = config.gaze_foveation && *config.gaze_foveation;
 
     // Initialize AMF library
     if (!init_amf_library()) return false;
@@ -776,6 +778,23 @@ namespace amf {
 
     // Set crop to actual frame dimensions (hw surfaces can be vertically aligned by 16)
     surface->SetCrop(0, 0, encode_width, encode_height);
+
+    // Experimental AMD-only gaze foveation control plane:
+    // ingest live gaze ROI telemetry from input channel and expose visibility via logs.
+    // Real ROI map programming into AMF surfaces will be layered on top of this path.
+    if (gaze_foveation_enabled && (video_format == 1 || video_format == 2)) {
+      const auto gaze = input::get_amd_gaze_foveation_state();
+      const auto now = std::chrono::steady_clock::now();
+      if (last_gaze_log.time_since_epoch().count() == 0 || now - last_gaze_log >= std::chrono::seconds(2)) {
+        BOOST_LOG(info) << "AMF foveation telemetry: enabled=" << gaze.enabled
+                        << " valid_tracking=" << gaze.valid_tracking
+                        << " center=(" << gaze.center_u << "," << gaze.center_v << ")"
+                        << " radii=(" << gaze.inner_radius << "," << gaze.outer_radius << ")"
+                        << " strength=" << (int) gaze.strength
+                        << " profile=" << (int) gaze.profile;
+        last_gaze_log = now;
+      }
+    }
 
     // Set per-frame properties
     if (force_idr) {

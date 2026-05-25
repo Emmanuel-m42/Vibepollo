@@ -5,6 +5,7 @@
 #pragma once
 
 // standard includes
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -15,6 +16,17 @@
 
 namespace input {
   struct input_t;
+  struct amd_gaze_foveation_state_t {
+    bool enabled = false;
+    bool valid_tracking = false;
+    std::uint32_t timestamp_ms = 0;
+    float center_u = 0.5f;
+    float center_v = 0.5f;
+    float inner_radius = 0.12f;
+    float outer_radius = 0.28f;
+    std::uint8_t strength = 50;
+    std::uint8_t profile = 0;
+  };
 
   void print(void *input);
   void reset(std::shared_ptr<input_t> &input);
@@ -29,6 +41,7 @@ namespace input {
   bool probe_gamepads();
 
   std::shared_ptr<input_t> alloc(safe::mail_t mail);
+  amd_gaze_foveation_state_t get_amd_gaze_foveation_state();
 
   struct touch_port_t: public platf::touch_port_t {
     int env_width, env_height;

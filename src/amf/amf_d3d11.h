@@ -7,6 +7,7 @@
 #include "amf_encoder.h"
 
 #include <d3d11.h>
+#include <chrono>
 #include <deque>
 #include <memory>
 #include <string>
@@ -114,6 +115,8 @@ namespace amf {
     bool statistics_enabled = false;
     bool psnr_enabled = false;
     bool ssim_enabled = false;
+    bool gaze_foveation_enabled = false;
+    std::chrono::steady_clock::time_point last_gaze_log = {};
 
     std::string last_error_string;
   };
