@@ -214,7 +214,7 @@ namespace platf::dxgi {
     capture_comp->SetProperty(AMF_DISPLAYCAPTURE_MONITOR_INDEX, output_index);
     capture_comp->SetProperty(AMF_DISPLAYCAPTURE_FRAMERATE, AMFConstructRate(config.framerate, 1));
     capture_comp->SetProperty(AMF_DISPLAYCAPTURE_MODE, AMF_DISPLAYCAPTURE_MODE_WAIT_FOR_PRESENT);
-    capture_comp->SetProperty(AMF_DISPLAYCAPTURE_DUPLICATEOUTPUT, true);
+    capture_comp->SetProperty(AMF_DISPLAYCAPTURE_DUPLICATEOUTPUT, false);
 
     result = capture_comp->Init(amf::AMF_SURFACE_UNKNOWN, 0, 0);
     if (result != AMF_OK) {
