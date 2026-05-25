@@ -163,6 +163,30 @@ function selectVirtualDisplayLayout(v: unknown) {
     virtualDisplayLayout.value = sv as any;
   }
 }
+
+const devAmdDirectCapture = computed<boolean>({
+  get() {
+    return ((config.value as any)?.capture || '') === 'amd';
+  },
+  set(enabled) {
+    store.updateOption('capture', enabled ? 'amd' : '');
+  },
+});
+
+function makeEnabledToggle(key: string) {
+  return computed<boolean>({
+    get() {
+      return ((config.value as any)?.[key] || 'disabled') === 'enabled';
+    },
+    set(enabled) {
+      store.updateOption(key, enabled ? 'enabled' : 'disabled');
+    },
+  });
+}
+
+const devAmdSfeMode = makeEnabledToggle('amd_sfe_mode');
+const devAmdSmartAccessVideo = makeEnabledToggle('amd_smart_access_video');
+const devAmdGazeFoveation = makeEnabledToggle('amd_gaze_foveation');
 </script>
 
 <template>
@@ -406,6 +430,66 @@ function selectVirtualDisplayLayout(v: unknown) {
 
     <!-- Display Modes -->
     <DisplayModesSettings />
+
+    <PlatformLayout>
+      <template #windows>
+        <section class="mt-8 mb-6">
+          <div class="rounded-md overflow-hidden border border-dark/10 dark:border-light/10">
+            <div class="bg-surface/40 px-4 py-3">
+              <h3 class="text-sm font-medium">Dev Settings</h3>
+              <p class="text-[11px] opacity-70 mt-1">
+                Experimental toggles for active AMD work.
+              </p>
+            </div>
+            <div class="p-4 space-y-4">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-sm font-medium">AMD Direct Capture</div>
+                  <p class="text-[11px] opacity-70">Force capture backend to AMD direct capture.</p>
+                </div>
+                <n-switch v-model:value="devAmdDirectCapture">
+                  <template #checked>{{ $t('_common.enabled') }}</template>
+                  <template #unchecked>{{ $t('_common.disabled') }}</template>
+                </n-switch>
+              </div>
+
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-sm font-medium">AMD Split Frame Encode (SFE)</div>
+                  <p class="text-[11px] opacity-70">Enable AMD multi-HW-instance split-frame request.</p>
+                </div>
+                <n-switch v-model:value="devAmdSfeMode">
+                  <template #checked>{{ $t('_common.enabled') }}</template>
+                  <template #unchecked>{{ $t('_common.disabled') }}</template>
+                </n-switch>
+              </div>
+
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-sm font-medium">AMD Smart Access Video</div>
+                  <p class="text-[11px] opacity-70">Enable AMD Smart Access Video scheduling hint.</p>
+                </div>
+                <n-switch v-model:value="devAmdSmartAccessVideo">
+                  <template #checked>{{ $t('_common.enabled') }}</template>
+                  <template #unchecked>{{ $t('_common.disabled') }}</template>
+                </n-switch>
+              </div>
+
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-sm font-medium">AMD Gaze Foveation (Experimental)</div>
+                  <p class="text-[11px] opacity-70">Enable AMD gaze-foveation control path telemetry.</p>
+                </div>
+                <n-switch v-model:value="devAmdGazeFoveation">
+                  <template #checked>{{ $t('_common.enabled') }}</template>
+                  <template #unchecked>{{ $t('_common.disabled') }}</template>
+                </n-switch>
+              </div>
+            </div>
+          </div>
+        </section>
+      </template>
+    </PlatformLayout>
   </div>
 </template>
 
