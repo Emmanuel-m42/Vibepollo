@@ -4,6 +4,8 @@
  */
 // standard includes
 #include <cmath>
+#include <array>
+#include <thread>
 
 // platform includes
 #include <winsock2.h>
@@ -1796,8 +1798,28 @@ namespace platf::dxgi {
       return -1;
     }
 
-    int amf_monitor_index = output_index;
-    auto try_init_with_index = [&](int idx) -> bool {
+    auto resolve_mapped_index = [&]() -> int {
+      if (!adapter || !output) {
+        return -1;
+      }
+      DXGI_OUTPUT_DESC selected_desc {};
+      output->GetDesc(&selected_desc);
+
+      output_t::pointer output_p {};
+      for (int idx = 0; adapter->EnumOutputs(idx, &output_p) != DXGI_ERROR_NOT_FOUND; ++idx) {
+        output_t out {output_p};
+        DXGI_OUTPUT_DESC desc {};
+        out->GetDesc(&desc);
+        if (wcscmp(desc.DeviceName, selected_desc.DeviceName) == 0) {
+          return idx;
+        }
+      }
+      return -1;
+    };
+
+    auto try_init_with_index = [&](int idx, int attempt, const char *label) -> bool {
+      BOOST_LOG(info) << "AMD DirectCapture: init attempt " << attempt << " using " << label
+                      << " monitor_index=" << idx;
       if (!dup.init(this, config, idx)) {
         BOOST_LOG(info) << "AMD DirectCapture: init succeeded with monitor_index=" << idx;
         return true;
@@ -1805,30 +1827,26 @@ namespace platf::dxgi {
       return false;
     };
 
-    if (!try_init_with_index(amf_monitor_index)) {
-      // Compatibility retry: map currently selected DXGI output name back to adapter-local index.
-      int mapped_index = -1;
-      DXGI_OUTPUT_DESC selected_desc {};
-      output->GetDesc(&selected_desc);
-      output_t::pointer output_p {};
-      for (int idx = 0; adapter->EnumOutputs(idx, &output_p) != DXGI_ERROR_NOT_FOUND; ++idx) {
-        output_t out {output_p};
-        DXGI_OUTPUT_DESC desc {};
-        out->GetDesc(&desc);
-        if (wcscmp(desc.DeviceName, selected_desc.DeviceName) == 0) {
-          mapped_index = idx;
+    const int base_index = output_index;
+    const std::array<int, 5> backoff_ms = {0, 100, 250, 500, 1000};
+    for (int i = 0; i < static_cast<int>(backoff_ms.size()); ++i) {
+      if (backoff_ms[i] > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms[i]));
+      }
+
+      const int attempt = i + 1;
+      if (try_init_with_index(base_index, attempt, "base")) {
+        break;
+      }
+
+      const int mapped_index = resolve_mapped_index();
+      if (mapped_index >= 0 && mapped_index != base_index) {
+        if (try_init_with_index(mapped_index, attempt, "mapped")) {
           break;
         }
       }
 
-      if (mapped_index >= 0 && mapped_index != amf_monitor_index) {
-        BOOST_LOG(warning) << "AMD DirectCapture: retrying with mapped monitor_index=" << mapped_index
-                           << " (initial=" << amf_monitor_index << ')';
-        if (!try_init_with_index(mapped_index)) {
-          BOOST_LOG(error) << "AMD VRAM() failed";
-          return -1;
-        }
-      } else {
+      if (attempt == static_cast<int>(backoff_ms.size())) {
         BOOST_LOG(error) << "AMD VRAM() failed";
         return -1;
       }
