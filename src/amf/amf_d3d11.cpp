@@ -613,6 +613,37 @@ namespace amf {
       BOOST_LOG(info) << "AMF: QUERY_TIMEOUT " << (query_timeout_supported ? "supported" : "not supported") << " (value=" << qt_val << ")";
     }
 
+    // Read back latency-critical properties so we can verify what AMF accepted
+    // on this driver/GPU instead of assuming requested values were honored.
+    {
+      auto log_latency_prop = [this](const wchar_t *name, const char *label) {
+        amf_int64 value = -1;
+        const auto prop_res = encoder->GetProperty(name, &value);
+        if (prop_res == AMF_OK) {
+          BOOST_LOG(info) << "AMF Latency: " << label << "=" << value;
+        } else {
+          BOOST_LOG(warning) << "AMF Latency: failed to read " << label << " (error " << prop_res << ")";
+        }
+      };
+
+      if (video_format == 0) {
+        log_latency_prop(AMF_VIDEO_ENCODER_LOWLATENCY_MODE, "h264_lowlatency_mode");
+        log_latency_prop(AMF_VIDEO_ENCODER_INPUT_QUEUE_SIZE, "h264_input_queue_size");
+        log_latency_prop(AMF_VIDEO_ENCODER_QUERY_TIMEOUT, "h264_query_timeout");
+        log_latency_prop(AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD, "h264_rate_control_method");
+      } else if (video_format == 1) {
+        log_latency_prop(AMF_VIDEO_ENCODER_HEVC_LOWLATENCY_MODE, "hevc_lowlatency_mode");
+        log_latency_prop(AMF_VIDEO_ENCODER_HEVC_INPUT_QUEUE_SIZE, "hevc_input_queue_size");
+        log_latency_prop(AMF_VIDEO_ENCODER_HEVC_QUERY_TIMEOUT, "hevc_query_timeout");
+        log_latency_prop(AMF_VIDEO_ENCODER_HEVC_RATE_CONTROL_METHOD, "hevc_rate_control_method");
+      } else {
+        log_latency_prop(AMF_VIDEO_ENCODER_AV1_ENCODING_LATENCY_MODE, "av1_encoding_latency_mode");
+        log_latency_prop(AMF_VIDEO_ENCODER_AV1_INPUT_QUEUE_SIZE, "av1_input_queue_size");
+        log_latency_prop(AMF_VIDEO_ENCODER_AV1_QUERY_TIMEOUT, "av1_query_timeout");
+        log_latency_prop(AMF_VIDEO_ENCODER_AV1_RATE_CONTROL_METHOD, "av1_rate_control_method");
+      }
+    }
+
     if (config.sfe_mode && *config.sfe_mode && (video_format == 1 || video_format == 2)) {
       auto log_sfe_prop = [this](const wchar_t *name, const char *label) {
         amf_int64 value = -1;
