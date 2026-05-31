@@ -8,6 +8,7 @@
 #include <bitset>
 #include <chrono>
 #include <cstring>
+#include <deque>
 #include <list>
 #include <mutex>
 #include <optional>
@@ -724,6 +725,13 @@ namespace video {
 
   class amf_encode_session_t: public encode_session_t {
   public:
+    struct frame_timing_t {
+      int64_t frame_index;
+      std::optional<std::chrono::steady_clock::time_point> frame_timestamp;
+      std::optional<std::chrono::steady_clock::time_point> capture_timestamp;
+      std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp;
+    };
+
     amf_encode_session_t(std::unique_ptr<platf::amf_encode_device_t> encode_device):
         device(std::move(encode_device)) {
     }
@@ -777,9 +785,37 @@ namespace video {
       return result;
     }
 
+    void
+    enqueue_frame_timing(
+      int64_t frame_index,
+      const std::optional<std::chrono::steady_clock::time_point> &frame_timestamp,
+      const std::optional<std::chrono::steady_clock::time_point> &capture_timestamp,
+      const std::optional<std::chrono::steady_clock::time_point> &host_processing_timestamp
+    ) {
+      frame_timings.push_back({frame_index, frame_timestamp, capture_timestamp, host_processing_timestamp});
+      // Keep bounded in pathological cases.
+      constexpr size_t MAX_TIMING_HISTORY = 512;
+      while (frame_timings.size() > MAX_TIMING_HISTORY) {
+        frame_timings.pop_front();
+      }
+    }
+
+    std::optional<frame_timing_t>
+    take_frame_timing(int64_t encoded_frame_index) {
+      for (auto it = frame_timings.begin(); it != frame_timings.end(); ++it) {
+        if (it->frame_index == encoded_frame_index) {
+          frame_timing_t timing = *it;
+          frame_timings.erase(frame_timings.begin(), std::next(it));
+          return timing;
+        }
+      }
+      return std::nullopt;
+    }
+
   private:
     std::unique_ptr<platf::amf_encode_device_t> device;
     bool force_idr = false;
+    std::deque<frame_timing_t> frame_timings;
   };
 
   struct sync_session_ctx_t {
@@ -2023,7 +2059,17 @@ namespace video {
   }
 
   int
-  encode_amf(int64_t frame_nr, amf_encode_session_t &session, safe::mail_raw_t::queue_t<packet_t> &packets, void *channel_data, std::optional<std::chrono::steady_clock::time_point> frame_timestamp) {
+  encode_amf(
+    int64_t frame_nr,
+    amf_encode_session_t &session,
+    safe::mail_raw_t::queue_t<packet_t> &packets,
+    void *channel_data,
+    std::optional<std::chrono::steady_clock::time_point> frame_timestamp,
+    std::optional<std::chrono::steady_clock::time_point> capture_timestamp,
+    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
+  ) {
+    session.enqueue_frame_timing(frame_nr, frame_timestamp, capture_timestamp, host_processing_timestamp);
+
     auto encoded_frame = session.encode_frame(frame_nr);
     if (encoded_frame.fatal) {
       BOOST_LOG(error) << "AMF encoder entered fatal state; forcing reinit";
@@ -2045,7 +2091,18 @@ namespace video {
     auto packet = std::make_unique<packet_raw_generic>(std::move(encoded_frame.data), encoded_frame.frame_index, encoded_frame.idr);
     packet->channel_data = channel_data;
     packet->after_ref_frame_invalidation = encoded_frame.after_ref_frame_invalidation;
-    packet->frame_timestamp = frame_timestamp;
+    if (auto timing = session.take_frame_timing(static_cast<int64_t>(encoded_frame.frame_index))) {
+      packet->frame_timestamp = timing->frame_timestamp;
+      packet->capture_timestamp = timing->capture_timestamp ? timing->capture_timestamp : timing->frame_timestamp;
+      packet->host_processing_timestamp = timing->host_processing_timestamp;
+    } else {
+      packet->frame_timestamp = frame_timestamp;
+      packet->capture_timestamp = capture_timestamp ? capture_timestamp : frame_timestamp;
+      packet->host_processing_timestamp = host_processing_timestamp;
+    }
+    if (webrtc_stream::has_active_sessions()) {
+      webrtc_stream::submit_video_packet(*packet);
+    }
     packets->raise(std::move(packet));
 
     return 0;
@@ -2067,7 +2124,7 @@ namespace video {
       return encode_nvenc(frame_nr, *nvenc_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
     }
     else if (auto amf_session = dynamic_cast<amf_encode_session_t *>(&session)) {
-      return encode_amf(frame_nr, *amf_session, packets, channel_data, frame_timestamp);
+      return encode_amf(frame_nr, *amf_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
     }
 
     return -1;
