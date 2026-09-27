@@ -19,6 +19,10 @@ if(WEBRTC_RUNTIME_DLL)
     install(FILES "${WEBRTC_RUNTIME_DLL}" DESTINATION "." COMPONENT application)
 endif()
 
+if(SUNSHINE_ENABLE_PYROWAVE)
+    install(FILES "${PYROWAVE_DLL}" DESTINATION "." COMPONENT application)
+endif()
+
 # Optional NVIDIA TrueHDR runtime. Release builders download a pinned runtime
 # bundle before configure; local builders may place these files in this
 # directory before packaging. Only the TrueHDR feature DLL is bundled; VSR is not

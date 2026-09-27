@@ -50,6 +50,14 @@ if (TARGET sunshine_display_helper)
         COMMENT "Copying sunshine_display_helper into tools directory")
 endif()
 
+if(SUNSHINE_ENABLE_PYROWAVE)
+    # The PyroWave headers come from the external project, so it must be fetched first.
+    add_dependencies(sunshine pyrowave_ext)
+    add_custom_command(TARGET sunshine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PYROWAVE_DLL}" "$<TARGET_FILE_DIR:sunshine>"
+        COMMENT "Copying the PyroWave library next to sunshine")
+endif()
+
 # Enable libdisplaydevice logging in the main Sunshine binary only
 target_compile_definitions(sunshine PRIVATE SUNSHINE_USE_DISPLAYDEVICE_LOGGING)
 

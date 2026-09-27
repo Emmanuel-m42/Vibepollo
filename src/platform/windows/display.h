@@ -348,6 +348,10 @@ namespace platf::dxgi {
 
     std::unique_ptr<amf_encode_device_t> make_amf_encode_device(pix_fmt_e pix_fmt) override;
 
+#ifdef SUNSHINE_ENABLE_PYROWAVE
+    std::unique_ptr<pyrowave_encode_device_t> make_pyrowave_encode_device() override;
+#endif
+
     std::atomic<uint32_t> next_image_id;
   };
 

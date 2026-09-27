@@ -13,6 +13,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 // lib includes
 #include <boost/core/noncopyable.hpp>
@@ -501,6 +502,24 @@ namespace platf {
     amf::amf_encoder *amf = nullptr;
   };
 
+  /**
+   * @brief Encode device for PyroWave, an intra-only GPU wavelet codec.
+   * @details Unlike the other devices, the encoder lives in the device itself: convert()
+   * stages the captured image and encode_frame() encodes it into a Moonlight "PYRW" frame.
+   */
+  struct pyrowave_encode_device_t: encode_device_t {
+    virtual bool init_encoder(const video::config_t &client_config) = 0;
+
+    /**
+     * @brief Encode the image staged by the last successful convert().
+     * @param frame Receives the Moonlight PYRW frame container.
+     * @return true on success.
+     */
+    virtual bool encode_frame(std::vector<uint8_t> &frame) = 0;
+
+    virtual void set_bitrate(int bitrate_kbps) = 0;
+  };
+
   enum class capture_e : int {
     ok,  ///< Success
     reinit,  ///< Need to reinitialize
@@ -575,6 +594,10 @@ namespace platf {
     }
 
     virtual std::unique_ptr<amf_encode_device_t> make_amf_encode_device(pix_fmt_e pix_fmt) {
+      return nullptr;
+    }
+
+    virtual std::unique_ptr<pyrowave_encode_device_t> make_pyrowave_encode_device() {
       return nullptr;
     }
 

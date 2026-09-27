@@ -55,6 +55,9 @@ extern "C" {
   #include "src/platform/windows/display_helper_integration.h"
   #include "src/platform/windows/display_vram.h"
   #include "src/platform/windows/misc.h"
+  #ifdef SUNSHINE_ENABLE_PYROWAVE
+    #include "src/platform/windows/pyrowave_loader.h"
+  #endif
   #include "src/platform/windows/rtx_hdr_runtime.h"
   #include "src/platform/windows/virtual_display.h"
   #include "uuid.h"
@@ -1288,6 +1291,45 @@ namespace video {
   private:
     std::unique_ptr<platf::nvenc_encode_device_t> device;
     bool force_idr = false;
+  };
+
+  /**
+   * @brief PyroWave session. Every frame is intra-coded, so IDR requests and reference
+   * frame invalidation need no action.
+   */
+  class pyrowave_encode_session_t: public encode_session_t {
+  public:
+    explicit pyrowave_encode_session_t(std::unique_ptr<platf::pyrowave_encode_device_t> encode_device):
+        device(std::move(encode_device)) {
+    }
+
+    int convert(platf::img_t &img) override {
+      return device ? device->convert(img) : -1;
+    }
+
+    void request_idr_frame() override {
+    }
+
+    void request_normal_frame() override {
+    }
+
+    void invalidate_ref_frames(int64_t, int64_t) override {
+    }
+
+    bool set_bitrate(int bitrate_kbps) override {
+      if (!device) {
+        return false;
+      }
+      device->set_bitrate(bitrate_kbps);
+      return true;
+    }
+
+    bool encode_frame(std::vector<uint8_t> &frame) {
+      return device && device->encode_frame(frame);
+    }
+
+  private:
+    std::unique_ptr<platf::pyrowave_encode_device_t> device;
   };
 
   class amf_encode_session_t: public encode_session_t {
@@ -3236,6 +3278,41 @@ namespace video {
     return 0;
   }
 
+  bool pyrowave_available() {
+#if defined(_WIN32) && defined(SUNSHINE_ENABLE_PYROWAVE)
+    return config::video.pyrowave_mode != 1 && platf::pyrowave::available();
+#else
+    return false;
+#endif
+  }
+
+  int encode_pyrowave(
+    int64_t frame_nr,
+    pyrowave_encode_session_t &session,
+    safe::mail_raw_t::queue_t<packet_t> &packets,
+    void *channel_data,
+    std::optional<std::chrono::steady_clock::time_point> frame_timestamp,
+    std::optional<std::chrono::steady_clock::time_point> capture_timestamp,
+    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
+  ) {
+    std::vector<uint8_t> frame;
+    if (!session.encode_frame(frame)) {
+      BOOST_LOG(error) << "PyroWave: failed to encode frame " << frame_nr;
+      return -1;
+    }
+
+    // Intra-only: every frame is flagged IDR so clients can start or recover on any frame.
+    auto packet = std::make_unique<packet_raw_generic>(std::move(frame), frame_nr, true);
+    packet->channel_data = channel_data;
+    packet->frame_timestamp = frame_timestamp;
+    packet->capture_timestamp = capture_timestamp ? capture_timestamp : frame_timestamp;
+    packet->host_processing_timestamp = host_processing_timestamp;
+    packet->packet_enqueue_timestamp = std::chrono::steady_clock::now();
+    packets->raise(std::move(packet));
+
+    return 0;
+  }
+
   int encode(
     int64_t frame_nr,
     encode_session_t &session,
@@ -3254,6 +3331,8 @@ namespace video {
       result = encode_nvenc(frame_nr, *nvenc_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
     } else if (auto amf_session = dynamic_cast<amf_encode_session_t *>(&session)) {
       result = encode_amf(frame_nr, *amf_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
+    } else if (auto pyrowave_session = dynamic_cast<pyrowave_encode_session_t *>(&session)) {
+      result = encode_pyrowave(frame_nr, *pyrowave_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
     }
 
     encode_duration_logger.collect_and_log(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - encode_start).count());
@@ -4127,6 +4206,12 @@ namespace video {
       if (operation_cancelled_out) *operation_cancelled_out = operation_cancelled;
       if (gate_contended_out) *gate_contended_out = gate_contended;
       return session;
+    } else if (dynamic_cast<platf::pyrowave_encode_device_t *>(encode_device.get())) {
+      auto pyrowave_encode_device = boost::dynamic_pointer_cast<platf::pyrowave_encode_device_t>(std::move(encode_device));
+      if (!pyrowave_encode_device->init_encoder(config)) {
+        return nullptr;
+      }
+      return std::make_unique<pyrowave_encode_session_t>(std::move(pyrowave_encode_device));
     }
 
     return nullptr;
@@ -4484,7 +4569,7 @@ namespace video {
     auto *const native_session = dynamic_cast<amf_encode_session_t *>(session.get());
     const bool native_amf_session = native_session != nullptr;
 #ifdef _WIN32
-    const bool legacy_amf_session = session_encoder == &amdvce_legacy;
+    const bool legacy_amf_session = session_encoder == &amdvce_legacy && config.videoFormat != VIDEO_FORMAT_PYROWAVE_ID;
 #else
     const bool legacy_amf_session = false;
 #endif
@@ -5081,6 +5166,19 @@ namespace video {
     bool deferred_avcodec = false) {
     std::unique_ptr<platf::encode_device_t> result;
 
+    if (config.videoFormat == VIDEO_FORMAT_PYROWAVE_ID) {
+      // PyroWave does not use the chosen hardware encoder at all: it encodes on the GPU through
+      // Vulkan, converting the captured RGB image itself. SDR only.
+      BOOST_LOG(info) << "Creating encoder [pyrowave]"sv;
+      auto pyrowave_device = disp.make_pyrowave_encode_device();
+      if (!pyrowave_device) {
+        BOOST_LOG(error) << "PyroWave: encode device creation failed"sv;
+        return nullptr;
+      }
+      pyrowave_device->colorspace = colorspace_from_client_config(config, false);
+      return pyrowave_device;
+    }
+
 #ifdef _WIN32
     if (&encoder == &amdvce_legacy && native_amf_lifecycle_gate.is_quarantined()) {
       BOOST_LOG(error) << "AMF: refusing legacy initialization while the AMD runtime is quarantined"sv;
@@ -5213,7 +5311,7 @@ namespace video {
     bool session_hdr_metadata_valid = false;
     SS_HDR_METADATA session_hdr_metadata {};
 #ifdef _WIN32
-    if (&encoder == &amdvce_legacy) {
+    if (&encoder == &amdvce_legacy && ctx.config.videoFormat != VIDEO_FORMAT_PYROWAVE_ID) {
       bool legacy_cancelled = false;
       bool legacy_gate_contended = false;
       auto legacy = make_legacy_amf_session_bounded(
@@ -5612,7 +5710,7 @@ namespace video {
       bool initialization_was_cancelled = false;
       bool initialization_gate_contended = false;
 #ifdef _WIN32
-      if (&encoder == &amdvce_legacy) {
+      if (&encoder == &amdvce_legacy && config.videoFormat != VIDEO_FORMAT_PYROWAVE_ID) {
         auto legacy = make_legacy_amf_session_bounded(
           display, config, display->width, display->height, &hdr_latch,
           initialization_deadline, initialization_cancelled,

@@ -1451,6 +1451,11 @@ namespace rtsp_stream {
       ss << "a=rtpmap:98 AV1/90000"sv << std::endl;
     }
 
+    if (video::pyrowave_available()) {
+      // PyroWave (Moonlight extension): clients select it with bitStreamFormat 3.
+      ss << "a=rtpmap:99 PYROWAVE/90000"sv << std::endl;
+    }
+
     if (!session->surround_params.empty()) {
       // If we have our own surround parameters, advertise them twice first
       ss << "a=fmtp:97 surround-params="sv << session->surround_params << std::endl;
@@ -1805,6 +1810,12 @@ namespace rtsp_stream {
       }
     }
     apply_rtx_hdr_stream_policy(config.monitor);
+    if (config.monitor.videoFormat == video::VIDEO_FORMAT_PYROWAVE_ID) {
+      // PyroWave streams are 8-bit SDR.
+      config.monitor.dynamicRange = 0;
+      config.monitor.prefer_sdr_10bit = false;
+      config.monitor.rtx_hdr_active = false;
+    }
 
     // If the client sent a configured bitrate, we will choose the actual bitrate ourselves
     // by using FEC percentage and audio quality settings. If the calculated bitrate ends up
@@ -1845,6 +1856,20 @@ namespace rtsp_stream {
 
     if (config.monitor.videoFormat == 2 && video::active_av1_mode == 1) {
       BOOST_LOG(warning) << "AV1 is disabled, yet the client requested AV1"sv;
+
+      respond(socket->sock, *session, &option, 400, "BAD REQUEST", req->sequenceNumber, {});
+      return false;
+    }
+
+    if (config.monitor.videoFormat == video::VIDEO_FORMAT_PYROWAVE_ID && !video::pyrowave_available()) {
+      BOOST_LOG(warning) << "PyroWave is unavailable, yet the client requested PyroWave"sv;
+
+      respond(socket->sock, *session, &option, 400, "BAD REQUEST", req->sequenceNumber, {});
+      return false;
+    }
+
+    if (config.monitor.videoFormat > video::VIDEO_FORMAT_PYROWAVE_ID || config.monitor.videoFormat < 0) {
+      BOOST_LOG(warning) << "Unknown video format requested: "sv << config.monitor.videoFormat;
 
       respond(socket->sock, *session, &option, 400, "BAD REQUEST", req->sequenceNumber, {});
       return false;

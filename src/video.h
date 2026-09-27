@@ -41,7 +41,7 @@ namespace video {
        SDR encoding colorspace (encoderCscMode >> 1) : 0 - BT.601, 1 - BT.709, 2 - BT.2020 */
     int encoderCscMode;
 
-    int videoFormat;  // 0 - H.264, 1 - HEVC, 2 - AV1
+    int videoFormat;  // 0 - H.264, 1 - HEVC, 2 - AV1, 3 - PyroWave
 
     /* Encoding color depth (bit depth): 0 - 8-bit, 1 - 10-bit
        HDR encoding activates when color depth is higher than 8-bit and the display which is being captured is operating in HDR mode */
@@ -416,6 +416,15 @@ namespace video {
   extern int active_av1_mode;
   extern bool last_encoder_probe_supported_ref_frames_invalidation;
   extern std::array<bool, 3> last_encoder_probe_supported_yuv444_for_codec;  // 0 - H.264, 1 - HEVC, 2 - AV1
+
+  /// x-nv-vqos[0].bitStreamFormat value for PyroWave (Moonlight extension).
+  constexpr int VIDEO_FORMAT_PYROWAVE_ID = 3;
+
+  /**
+   * @brief Whether PyroWave is enabled in the config and can encode on this host.
+   * @details The first call loads the PyroWave library and probes for a Vulkan device.
+   */
+  bool pyrowave_available();
 
   bool has_attempted_encoder_probe();
   bool has_successful_encoder_probe();

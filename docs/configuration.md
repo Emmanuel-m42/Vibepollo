@@ -2546,6 +2546,41 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
 </table>
 
+### pyrowave_mode
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Allows PyroWave-capable clients to request PyroWave, an intra-only wavelet codec encoded on the GPU
+            through Vulkan for the lowest possible encode and decode latency. It needs several hundred Mbps, so
+            it is intended for wired local networks. Streams are 8-bit SDR in 4:2:0 or 4:4:4.
+            @note{Windows only. Requires a GPU with a Vulkan 1.3 driver.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            0
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            pyrowave_mode = 1
+            @endcode</td>
+    </tr>
+    <tr>
+        <td rowspan="2">Choices</td>
+        <td>0</td>
+        <td>advertise support for PyroWave when it is available on this host (recommended)</td>
+    </tr>
+    <tr>
+        <td>1</td>
+        <td>do not advertise support for PyroWave</td>
+    </tr>
+</table>
+
 ### capture
 
 <table>

@@ -307,3 +307,12 @@ if(SUNSHINE_ENABLE_TRAY)
     list(APPEND PLATFORM_TARGET_FILES
             "${CMAKE_SOURCE_DIR}/third-party/tray/src/tray_windows.c")
 endif()
+
+if(SUNSHINE_ENABLE_PYROWAVE)
+    list(APPEND SUNSHINE_DEFINITIONS SUNSHINE_ENABLE_PYROWAVE=1)
+    include_directories(SYSTEM ${PYROWAVE_INCLUDE_DIRS})
+    list(APPEND PLATFORM_TARGET_FILES
+            "${CMAKE_SOURCE_DIR}/src/platform/windows/display_pyrowave.cpp"
+            "${CMAKE_SOURCE_DIR}/src/platform/windows/pyrowave_loader.h"
+            "${CMAKE_SOURCE_DIR}/src/platform/windows/pyrowave_loader.cpp")
+endif()

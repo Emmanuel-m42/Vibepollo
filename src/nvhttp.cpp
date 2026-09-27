@@ -2894,6 +2894,12 @@ namespace nvhttp {
           codec_mode_flags |= SCM_AV1_HIGH10_444;
         }
       }
+      if (video::pyrowave_available()) {
+        // PyroWave (Moonlight extension). 4:4:4 needs no hardware support: PyroWave encodes on shaders.
+        constexpr uint32_t SCM_PYROWAVE = 0x00800000;
+        constexpr uint32_t SCM_PYROWAVE_444 = 0x01000000;
+        codec_mode_flags |= SCM_PYROWAVE | SCM_PYROWAVE_444;
+      }
       tree.put("root.ServerCodecModeSupport", codec_mode_flags);
 
       tree.put("root.PairStatus", pair_status);

@@ -63,6 +63,7 @@ namespace config {
 
     int hevc_mode;
     int av1_mode;
+    int pyrowave_mode;  // 0 - enabled when available, 1 - disabled
 
     int min_threads;  // Minimum number of threads/slices for CPU encoding
 
