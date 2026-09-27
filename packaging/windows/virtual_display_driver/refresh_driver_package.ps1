@@ -182,7 +182,13 @@ function Resolve-PackageVersionFromGit {
         return ''
     }
 
-    $describe = & $git.Source -C $Path describe --tags --long --match 'v[0-9]*' 2>$null
+    # A shallow checkout has no tags. With ErrorActionPreference=Stop, git's stderr becomes a
+    # terminating NativeCommandError despite the redirect, so treat that as "no version" too.
+    try {
+        $describe = & $git.Source -C $Path describe --tags --long --match 'v[0-9]*' 2>$null
+    } catch {
+        return ''
+    }
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($describe)) {
         return ''
     }
