@@ -371,7 +371,7 @@ namespace platf::dxgi {
 
       // PyroWave takes ownership of the handle on successful import.
       pyrowave_image_create_info image_info {};
-      create_info.device = pw_device;
+      image_info.device = pw_device;
       image_info.external_handle = reinterpret_cast<pyrowave_os_handle>(shared_handle);
       image_info.handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
       image_info.image_create_info = &image_create_info;
