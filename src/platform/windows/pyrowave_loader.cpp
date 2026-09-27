@@ -3,6 +3,7 @@
  * @brief Runtime loading of the PyroWave encoder library.
  */
 // platform includes
+#include <winsock2.h>
 #include <windows.h>
 
 // standard includes

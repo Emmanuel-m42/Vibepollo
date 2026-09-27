@@ -19,6 +19,7 @@
 #include <vector>
 
 // platform includes
+#include <winsock2.h>
 #include <d3d11_4.h>
 #include <dxgi1_2.h>
 
@@ -172,12 +173,12 @@ namespace platf::dxgi {
       framerate = std::max(1, client_config.framerate);
       chroma444 = client_config.chromaSamplingType == 1;
 
-      pyrowave_encoder_create_info info {};
-      info.device = pw_device;
-      info.width = width;
-      info.height = height;
-      info.chroma = chroma444 ? PYROWAVE_CHROMA_SUBSAMPLING_444 : PYROWAVE_CHROMA_SUBSAMPLING_420;
-      const auto result = pw->encoder_create(&info, &encoder);
+      pyrowave_encoder_create_info create_info {};
+      create_info.device = pw_device;
+      create_info.width = width;
+      create_info.height = height;
+      create_info.chroma = chroma444 ? PYROWAVE_CHROMA_SUBSAMPLING_444 : PYROWAVE_CHROMA_SUBSAMPLING_420;
+      const auto result = pw->encoder_create(&create_info, &encoder);
       if (result != PYROWAVE_SUCCESS) {
         BOOST_LOG(error) << "PyroWave: encoder creation failed for "sv << width << 'x' << height << " (error "sv << static_cast<int>(result) << ')';
         return false;
@@ -254,20 +255,20 @@ namespace platf::dxgi {
       release.sync.semaphore = pw->sync_object_get_semaphore(sync);
       release.sync.value = ++timeline;
 
-      pyrowave_scaled_encode_info info {};
-      auto result = pw->image_get_image_view(staged->image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_USAGE_SAMPLED_BIT, &info.view);
+      pyrowave_scaled_encode_info scaled_info {};
+      auto result = pw->image_get_image_view(staged->image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_USAGE_SAMPLED_BIT, &scaled_info.view);
       if (result != PYROWAVE_SUCCESS) {
         BOOST_LOG(error) << "PyroWave: failed to create an image view (error "sv << static_cast<int>(result) << ')';
         staged = nullptr;
         return false;
       }
-      info.input_color_space = staged->color_space;
-      info.output_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-      info.ycbcr_chroma_midpoint = 128.0f / 255.0f;
-      info.intermediate_plane_format = VK_FORMAT_R8_UNORM;
+      scaled_info.input_color_space = staged->color_space;
+      scaled_info.output_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+      scaled_info.ycbcr_chroma_midpoint = 128.0f / 255.0f;
+      scaled_info.intermediate_plane_format = VK_FORMAT_R8_UNORM;
 
       pyrowave_rate_control rate_control {max_frame_bytes};
-      result = pw->encoder_encode_gpu_scaled_synchronous(encoder, &acquire, &release, &info, &rate_control);
+      result = pw->encoder_encode_gpu_scaled_synchronous(encoder, &acquire, &release, &scaled_info, &rate_control);
       staged = nullptr;
 
       if (result != PYROWAVE_SUCCESS) {
@@ -369,12 +370,12 @@ namespace platf::dxgi {
       image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
       // PyroWave takes ownership of the handle on successful import.
-      pyrowave_image_create_info info {};
-      info.device = pw_device;
-      info.external_handle = reinterpret_cast<pyrowave_os_handle>(shared_handle);
-      info.handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
-      info.image_create_info = &image_create_info;
-      const auto result = pw->image_create(&info, &shared.image);
+      pyrowave_image_create_info image_info {};
+      create_info.device = pw_device;
+      image_info.external_handle = reinterpret_cast<pyrowave_os_handle>(shared_handle);
+      image_info.handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+      image_info.image_create_info = &image_create_info;
+      const auto result = pw->image_create(&image_info, &shared.image);
       if (result != PYROWAVE_SUCCESS) {
         BOOST_LOG(error) << "PyroWave: failed to import a "sv << tex_width << 'x' << tex_height << " D3D11 texture into Vulkan (error "sv << static_cast<int>(result) << ')';
         CloseHandle(shared_handle);
