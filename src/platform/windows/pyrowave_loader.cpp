@@ -39,8 +39,9 @@ namespace platf::pyrowave {
       exe_path.resize(length);
       const auto library_path = std::filesystem::path(exe_path).parent_path() / library_name;
 
-      // The DLL is only ever loaded from next to sunshine.exe, never from the search path.
-      HMODULE module = LoadLibraryExW(library_path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+      // The DLL is only ever loaded from next to sunshine.exe, never from the search path. Its own
+      // imports resolve from its directory and the process defaults main() sets up (System32).
+      HMODULE module = LoadLibraryExW(library_path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
       if (!module) {
         BOOST_LOG(info) << "PyroWave: " << library_path.string() << " not loaded (error " << GetLastError() << "); PyroWave is unavailable";
         return nullptr;
