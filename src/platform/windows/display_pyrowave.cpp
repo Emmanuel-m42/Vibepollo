@@ -28,6 +28,8 @@
 #include "display_vram.h"
 #include "pyrowave_loader.h"
 #include "src/logging.h"
+
+#include <chrono>
 #include "src/utility.h"
 #include "src/video.h"
 
@@ -50,8 +52,14 @@ namespace platf::dxgi {
     constexpr uint8_t pyrw_flag_hdr10 = 0x02;
 
     // PyroWave packets are only a framing unit inside our container; Moonlight's RTP layer
-    // splits the whole frame into network packets, so large PyroWave packets are fine.
-    constexpr size_t pyrowave_packet_boundary = 16 * 1024;
+    // splits the whole frame into network packets. A boundary above any frame budget yields a
+    // single packet, which PyroWave can write straight into the outgoing container.
+    constexpr size_t pyrowave_packet_boundary = 64 * 1024 * 1024;
+    constexpr size_t pyrw_header_size = 8;
+    constexpr size_t pyrw_packet_prefix_size = 4;
+
+    // How often PyroWave's per-pass GPU timings are written to the log.
+    constexpr auto gpu_stats_interval = std::chrono::seconds(20);
 
     constexpr UINT keyed_mutex_timeout_ms = 3000;
 
@@ -75,12 +83,6 @@ namespace platf::dxgi {
       }
     }
 
-    void append_be32(std::vector<uint8_t> &out, uint32_t value) {
-      out.push_back(uint8_t(value >> 24));
-      out.push_back(uint8_t(value >> 16));
-      out.push_back(uint8_t(value >> 8));
-      out.push_back(uint8_t(value));
-    }
   }  // namespace
 
   class d3d_pyrowave_encode_device_t final: public pyrowave_encode_device_t {
@@ -206,6 +208,7 @@ namespace platf::dxgi {
       if (!encoder) {
         return -1;
       }
+      const auto convert_start = std::chrono::steady_clock::now();
       staged = nullptr;
       prune_expired_captures();
 
@@ -238,6 +241,7 @@ namespace platf::dxgi {
       device_ctx->Signal(fence.get(), ++timeline);
       device_ctx->Flush();
       staged_value = timeline;
+      convert_logger.collect_and_log(elapsed_ms(convert_start));
       return 0;
     }
 
@@ -275,7 +279,9 @@ namespace platf::dxgi {
       scaled_info.intermediate_plane_format = hdr ? VK_FORMAT_R16_UNORM : VK_FORMAT_R8_UNORM;
 
       pyrowave_rate_control rate_control {max_frame_bytes};
+      const auto submit_start = std::chrono::steady_clock::now();
       result = pw->encoder_encode_gpu_scaled_synchronous(encoder, &acquire, &release, &scaled_info, &rate_control);
+      submit_logger.collect_and_log(elapsed_ms(submit_start));
       staged = nullptr;
 
       if (result != PYROWAVE_SUCCESS) {
@@ -291,39 +297,59 @@ namespace platf::dxgi {
       // the staging texture must wait for it.
       device_ctx->Wait(fence.get(), timeline);
 
-      // Blocks until the GPU encode has finished.
+      // Blocks until the GPU encode (including the wait for the captured frame) has finished.
+      const auto wait_start = std::chrono::steady_clock::now();
       size_t num_packets = 0;
       result = pw->encoder_compute_num_packets(encoder, pyrowave_packet_boundary, &num_packets);
-      if (result != PYROWAVE_SUCCESS || num_packets == 0 || num_packets > 0xffff) {
+      gpu_wait_logger.collect_and_log(elapsed_ms(wait_start));
+      if (result != PYROWAVE_SUCCESS || num_packets != 1) {
         BOOST_LOG(error) << "PyroWave: packet count query failed (error "sv << static_cast<int>(result) << ", "sv << num_packets << " packets)"sv;
         return false;
       }
-      packets.resize(num_packets);
-      bitstream.resize(max_frame_bytes + num_packets * 64 + 4096);
+
+      // One packet, packetized straight into the container after its length prefix.
+      const auto pack_start = std::chrono::steady_clock::now();
+      const size_t payload_offset = pyrw_header_size + pyrw_packet_prefix_size;
+      frame.resize(payload_offset + max_frame_bytes + 4096);
+      pyrowave_packet packet {};
       size_t out_packets = 0;
-      result = pw->encoder_packetize(encoder, packets.data(), pyrowave_packet_boundary, &out_packets, bitstream.data(), bitstream.size());
-      if (result != PYROWAVE_SUCCESS || out_packets == 0) {
-        BOOST_LOG(error) << "PyroWave: packetize failed (error "sv << static_cast<int>(result) << ')';
+      result = pw->encoder_packetize(encoder, &packet, pyrowave_packet_boundary, &out_packets,
+                                     frame.data() + payload_offset, frame.size() - payload_offset);
+      if (result != PYROWAVE_SUCCESS || out_packets != 1 || packet.offset != 0) {
+        BOOST_LOG(error) << "PyroWave: packetize failed (error "sv << static_cast<int>(result) << ", "sv << out_packets << " packets)"sv;
         return false;
       }
+      frame.resize(payload_offset + packet.size);
 
-      size_t payload_bytes = 0;
-      for (size_t i = 0; i < out_packets; i++) {
-        payload_bytes += packets[i].size;
-      }
-      frame.clear();
-      frame.reserve(8 + out_packets * 4 + payload_bytes);
       const uint8_t flags = pyrw_flag_full_range_center_chroma | (hdr ? pyrw_flag_hdr10 : 0);
-      frame.insert(frame.end(), {'P', 'Y', 'R', 'W', pyrw_version, uint8_t(out_packets >> 8), uint8_t(out_packets & 0xff), flags});
-      for (size_t i = 0; i < out_packets; i++) {
-        append_be32(frame, static_cast<uint32_t>(packets[i].size));
-        const auto *begin = bitstream.data() + packets[i].offset;
-        frame.insert(frame.end(), begin, begin + packets[i].size);
-      }
+      const uint8_t header[pyrw_header_size] {'P', 'Y', 'R', 'W', pyrw_version, 0, 1, flags};
+      std::memcpy(frame.data(), header, sizeof(header));
+      const auto size = static_cast<uint32_t>(packet.size);
+      const uint8_t prefix[pyrw_packet_prefix_size] {uint8_t(size >> 24), uint8_t(size >> 16), uint8_t(size >> 8), uint8_t(size)};
+      std::memcpy(frame.data() + pyrw_header_size, prefix, sizeof(prefix));
+      pack_logger.collect_and_log(elapsed_ms(pack_start));
+
+      report_gpu_stats();
       return true;
     }
 
   private:
+    static double elapsed_ms(std::chrono::steady_clock::time_point start) {
+      return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    }
+
+    /// Logs PyroWave's per-pass GPU times (averaged per frame) every gpu_stats_interval.
+    void report_gpu_stats() {
+      const auto now = std::chrono::steady_clock::now();
+      if (now - last_gpu_stats < gpu_stats_interval) {
+        return;
+      }
+      last_gpu_stats = now;
+      pw->device_report_performance_stats(pw_device, [](void *, const char *msg) {
+        BOOST_LOG(debug) << "PyroWave GPU: "sv << msg;
+      }, nullptr, true);
+    }
+
     /// A texture created on our device and imported into Vulkan.
     struct shared_image_t {
       texture2d_t texture;
@@ -504,8 +530,12 @@ namespace platf::dxgi {
     shared_image_t *staged = nullptr;
     uint64_t staged_value = 0;
 
-    std::vector<pyrowave_packet> packets;
-    std::vector<uint8_t> bitstream;
+    // Stage timings, logged at debug level like the rest of Vibepollo's pipeline timings.
+    logging::min_max_avg_periodic_logger<double> convert_logger {debug, "PyroWave: capture copy + fence signal (CPU)", "ms"};
+    logging::min_max_avg_periodic_logger<double> submit_logger {debug, "PyroWave: encode submit (CPU)", "ms"};
+    logging::min_max_avg_periodic_logger<double> gpu_wait_logger {debug, "PyroWave: wait for GPU encode", "ms"};
+    logging::min_max_avg_periodic_logger<double> pack_logger {debug, "PyroWave: packetize into frame", "ms"};
+    std::chrono::steady_clock::time_point last_gpu_stats {};
 
     int display_width = 0;
     int display_height = 0;

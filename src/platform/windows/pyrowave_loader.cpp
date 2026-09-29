@@ -52,6 +52,7 @@ namespace platf::pyrowave {
                 resolve(module, "pyrowave_create_default_device", loaded.create_default_device) &&
                 resolve(module, "pyrowave_create_device_by_compat2", loaded.create_device_by_compat2) &&
                 resolve(module, "pyrowave_device_destroy", loaded.device_destroy) &&
+                resolve(module, "pyrowave_device_report_performance_stats", loaded.device_report_performance_stats) &&
                 resolve(module, "pyrowave_sync_object_create", loaded.sync_object_create) &&
                 resolve(module, "pyrowave_sync_object_get_semaphore", loaded.sync_object_get_semaphore) &&
                 resolve(module, "pyrowave_sync_object_destroy", loaded.sync_object_destroy) &&

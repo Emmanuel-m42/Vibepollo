@@ -19,6 +19,7 @@ namespace platf::pyrowave {
     decltype(&::pyrowave_create_default_device) create_default_device;
     decltype(&::pyrowave_create_device_by_compat2) create_device_by_compat2;
     decltype(&::pyrowave_device_destroy) device_destroy;
+    decltype(&::pyrowave_device_report_performance_stats) device_report_performance_stats;
     decltype(&::pyrowave_sync_object_create) sync_object_create;
     decltype(&::pyrowave_sync_object_get_semaphore) sync_object_get_semaphore;
     decltype(&::pyrowave_sync_object_destroy) sync_object_destroy;
