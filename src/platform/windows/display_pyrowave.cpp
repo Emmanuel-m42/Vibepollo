@@ -247,6 +247,7 @@ namespace platf::dxgi {
 
     bool encode_frame(std::vector<uint8_t> &frame) override {
       if (!staged) {
+        BOOST_LOG(error) << "PyroWave: encode requested before any frame was captured"sv;
         return false;
       }
 
@@ -268,7 +269,6 @@ namespace platf::dxgi {
       auto result = pw->image_get_image_view(staged->image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_USAGE_SAMPLED_BIT, &scaled_info.view);
       if (result != PYROWAVE_SUCCESS) {
         BOOST_LOG(error) << "PyroWave: failed to create an image view (error "sv << static_cast<int>(result) << ')';
-        staged = nullptr;
         return false;
       }
       scaled_info.input_color_space = staged->color_space;
@@ -282,7 +282,8 @@ namespace platf::dxgi {
       const auto submit_start = std::chrono::steady_clock::now();
       result = pw->encoder_encode_gpu_scaled_synchronous(encoder, &acquire, &release, &scaled_info, &rate_control);
       submit_logger.collect_and_log(elapsed_ms(submit_start));
-      staged = nullptr;
+      // The staged image stays valid until the next convert(): when no new frame arrives in time
+      // the encode loop re-encodes the previous image, and its fence value is already reached.
 
       if (result != PYROWAVE_SUCCESS) {
         // Nothing was submitted, so Vulkan will never signal the release value. Reach it on our
