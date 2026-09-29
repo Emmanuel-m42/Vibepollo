@@ -304,6 +304,25 @@ jobs:
             mingw-w64-${{ matrix.toolchain }}-sqlite3
             mingw-w64-${{ matrix.toolchain }}-tools
 
+      - name: Pin mingw-w64 runtime to r375
+        # mingw-w64 14.0.0.r420+ winpthreads rejects zeroed mutex/condvar handles with EINVAL
+        # instead of lazily initialising them, which makes sunshine.exe abort at startup with
+        # "std::system_error: Invalid argument" (see fluffos/fluffos#1412). r375 is what the
+        # last working releases were built with.
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          base=https://repo.msys2.org/mingw/${MSYSTEM,,}
+          ver=14.0.0.r375.g9c1abbbf5-1
+          pkgs=()
+          for p in headers crt libwinpthread winpthreads tools; do
+            f="mingw-w64-${{ matrix.toolchain }}-$p-$ver-any.pkg.tar.zst"
+            curl -fsSL --retry 3 -o "/tmp/$f" "$base/$f"
+            pkgs+=("/tmp/$f")
+          done
+          pacman -Udd --noconfirm "${pkgs[@]}"
+          pacman -Q | grep -E "(headers|crt|winpthread|tools)-14" || true
+
       - name: Setup dotnet  # needed for wix
         uses: actions/setup-dotnet@baa11fbfe1d6520db94683bd5c7a3818018e4309  # v5.1.0
         with:
