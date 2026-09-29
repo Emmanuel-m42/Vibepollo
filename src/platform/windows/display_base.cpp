@@ -422,6 +422,7 @@ namespace platf::dxgi {
     // config::video.wgc_pacing_smoothing; the diagnostics below run regardless so the path-a/path-b
     // bust mix and the re-anchor phase error can be measured with smoothing on *and* off.
     std::optional<std::chrono::steady_clock::time_point> last_pacing_slot;
+    std::optional<std::chrono::steady_clock::time_point> last_present_capture;
     uint64_t pacing_bust_woke_late = 0;      // path (a): woke past the slot deadline
     uint64_t pacing_bust_snapshot_miss = 0;  // path (b): zero-timeout snapshot found no fresh frame
     uint64_t pacing_phase_preserved = 0;     // re-anchor snapped back onto the prior grid
@@ -499,8 +500,33 @@ namespace platf::dxgi {
       platf::capture_e status = capture_e::ok;
       std::shared_ptr<img_t> img_out;
 
+      const bool present_driven = config::video.capture_on_present && client_frame_rate_adjusted.Numerator != 0;
+      if (present_driven) {
+        // Present-driven capture: block until the source publishes a new frame and take it at
+        // once, instead of waiting for the next slot on the frame-interval grid (which costs up
+        // to one interval, about half on average). Capture is still capped near the stream frame
+        // rate so a source running faster cannot flood the encoder: the next capture waits until
+        // 90% of an interval after the previous one, then takes the newest frame.
+        const auto interval = std::chrono::nanoseconds(1s) * client_frame_rate_adjusted.Denominator / client_frame_rate_adjusted.Numerator;
+        if (last_present_capture) {
+          const auto earliest = *last_present_capture + interval * 9 / 10;
+          if (std::chrono::steady_clock::now() < earliest) {
+            sleep_until_capture_target(timer.get(), earliest);
+          }
+        }
+
+        status = snapshot(pull_free_image_cb, img_out, 200ms, *cursor);
+        if (status == capture_e::ok && img_out) {
+          last_present_capture = std::chrono::steady_clock::now();
+        } else if (status == capture_e::timeout) {
+          // Nothing is updating the display; see the lock-starvation note below.
+          std::this_thread::sleep_for(10ms);
+        }
+        frame_pacing_group_start = std::nullopt;
+        frame_pacing_group_frames = 0;
+      }
       // Try to continue frame pacing group, snapshot() is called with zero timeout after waiting for client frame interval
-      if (frame_pacing_group_start) {
+      else if (frame_pacing_group_start) {
         if (client_frame_rate_adjusted.Numerator == 0) {
           frame_pacing_group_start = std::nullopt;
           frame_pacing_group_frames = 0;
@@ -540,7 +566,7 @@ namespace platf::dxgi {
       }
 
       // Start new frame pacing group if necessary, snapshot() is called with non-zero timeout
-      if (status == capture_e::timeout || (status == capture_e::ok && !frame_pacing_group_start)) {
+      if (!present_driven && (status == capture_e::timeout || (status == capture_e::ok && !frame_pacing_group_start))) {
         status = snapshot(pull_free_image_cb, img_out, 200ms, *cursor);
 
         if (status == capture_e::ok && img_out) {

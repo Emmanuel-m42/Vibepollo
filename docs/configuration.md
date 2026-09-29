@@ -4332,6 +4332,34 @@ Sets the maximum on-disk size, in MiB, of the session-history database before ol
 
 Enables the Vulkan HDR layer used by the display stack when HDR Vulkan capture support is available.
 
+### capture_on_present
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Capture each frame as soon as the captured display presents it, instead of on a fixed grid at the
+            client's frame rate. On the grid a frame that arrives just after a capture slot waits for the next
+            slot (up to one frame interval, about half an interval on average); with this enabled it is captured
+            immediately. Capture remains capped near the client frame rate.
+            @tip{Cap the game slightly below the stream frame rate so every game frame is captured on arrival.}
+            @note{Applies to Windows only.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            disabled
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            capture_on_present = enabled
+            @endcode</td>
+    </tr>
+</table>
+
 ### wgc_pacing_smoothing
 
 Enables WGC pacing smoothing so capture re-anchors to the pacing grid instead of raw frame-arrival timing.
