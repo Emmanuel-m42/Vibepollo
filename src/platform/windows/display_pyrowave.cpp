@@ -42,9 +42,12 @@ namespace platf::dxgi {
     // Moonlight PyroWave frame container: "PYRW", version, big-endian u16 packet count,
     // flags byte, then per packet a big-endian u32 length followed by the packet bytes.
     constexpr uint8_t pyrw_version = 1;
-    // Frames produced by PyroWave's own RGB -> YCbCr conversion: BT.709, full range,
-    // centre-sited chroma. Without this flag clients assume limited range, left-cosited chroma.
+    // Frames produced by PyroWave's own RGB -> YCbCr conversion: full range, centre-sited
+    // chroma. Without this flag clients assume limited range, left-cosited chroma.
     constexpr uint8_t pyrw_flag_full_range_center_chroma = 0x01;
+    // HDR10: SMPTE ST 2084 (PQ) transfer, BT.2020 primaries and non-constant-luminance matrix.
+    // Without it the frame is SDR BT.709.
+    constexpr uint8_t pyrw_flag_hdr10 = 0x02;
 
     // PyroWave packets are only a framing unit inside our container; Moonlight's RTP layer
     // splits the whole frame into network packets, so large PyroWave packets are fine.
@@ -172,6 +175,8 @@ namespace platf::dxgi {
       height = client_config.height & ~1;
       framerate = std::max(1, client_config.framerate);
       chroma444 = client_config.chromaSamplingType == 1;
+      // make_encode_device() sets the colorspace before the session initialises the encoder.
+      hdr = ::video::colorspace_is_hdr(colorspace);
 
       pyrowave_encoder_create_info create_info {};
       create_info.device = pw_device;
@@ -186,7 +191,7 @@ namespace platf::dxgi {
 
       set_bitrate(client_config.bitrate);
       BOOST_LOG(info) << "PyroWave: encoding "sv << width << 'x' << height << '@' << framerate
-                      << (chroma444 ? " 4:4:4"sv : " 4:2:0"sv) << ", "sv << client_config.bitrate << " kbps ("sv
+                      << (chroma444 ? " 4:4:4"sv : " 4:2:0"sv) << (hdr ? " HDR10"sv : " SDR"sv) << ", "sv << client_config.bitrate << " kbps ("sv
                       << max_frame_bytes << " bytes per frame)"sv;
       return true;
     }
@@ -263,9 +268,11 @@ namespace platf::dxgi {
         return false;
       }
       scaled_info.input_color_space = staged->color_space;
-      scaled_info.output_color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+      // HDR10 output is BT.2020 PQ; it is not tone mapped, so an SDR capture lands at SDR white.
+      scaled_info.output_color_space = hdr ? VK_COLOR_SPACE_HDR10_ST2084_EXT : VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
       scaled_info.ycbcr_chroma_midpoint = 128.0f / 255.0f;
-      scaled_info.intermediate_plane_format = VK_FORMAT_R8_UNORM;
+      // 16-bit planes keep PQ free of banding; 8-bit SDR planes are dithered by PyroWave.
+      scaled_info.intermediate_plane_format = hdr ? VK_FORMAT_R16_UNORM : VK_FORMAT_R8_UNORM;
 
       pyrowave_rate_control rate_control {max_frame_bytes};
       result = pw->encoder_encode_gpu_scaled_synchronous(encoder, &acquire, &release, &scaled_info, &rate_control);
@@ -306,7 +313,8 @@ namespace platf::dxgi {
       }
       frame.clear();
       frame.reserve(8 + out_packets * 4 + payload_bytes);
-      frame.insert(frame.end(), {'P', 'Y', 'R', 'W', pyrw_version, uint8_t(out_packets >> 8), uint8_t(out_packets & 0xff), pyrw_flag_full_range_center_chroma});
+      const uint8_t flags = pyrw_flag_full_range_center_chroma | (hdr ? pyrw_flag_hdr10 : 0);
+      frame.insert(frame.end(), {'P', 'Y', 'R', 'W', pyrw_version, uint8_t(out_packets >> 8), uint8_t(out_packets & 0xff), flags});
       for (size_t i = 0; i < out_packets; i++) {
         append_be32(frame, static_cast<uint32_t>(packets[i].size));
         const auto *begin = bitstream.data() + packets[i].offset;
@@ -505,6 +513,7 @@ namespace platf::dxgi {
     int height = 0;
     int framerate = 60;
     bool chroma444 = false;
+    bool hdr = false;
     size_t max_frame_bytes = 0;
   };
 

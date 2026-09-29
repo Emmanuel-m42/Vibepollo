@@ -1811,8 +1811,9 @@ namespace rtsp_stream {
     }
     apply_rtx_hdr_stream_policy(config.monitor);
     if (config.monitor.videoFormat == video::VIDEO_FORMAT_PYROWAVE_ID) {
-      // PyroWave streams are 8-bit SDR.
-      config.monitor.dynamicRange = 0;
+      // PyroWave streams are 8-bit SDR or HDR10 (PQ, BT.2020); there is no 10-bit SDR mode, and
+      // HDR needs the captured display itself to be in HDR mode.
+      config.monitor.dynamicRange = config.monitor.dynamicRange || session->enable_hdr ? 1 : 0;
       config.monitor.prefer_sdr_10bit = false;
       config.monitor.rtx_hdr_active = false;
     }

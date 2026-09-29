@@ -5166,21 +5166,8 @@ namespace video {
     bool deferred_avcodec = false) {
     std::unique_ptr<platf::encode_device_t> result;
 
-    if (config.videoFormat == VIDEO_FORMAT_PYROWAVE_ID) {
-      // PyroWave does not use the chosen hardware encoder at all: it encodes on the GPU through
-      // Vulkan, converting the captured RGB image itself. SDR only.
-      BOOST_LOG(info) << "Creating encoder [pyrowave]"sv;
-      auto pyrowave_device = disp.make_pyrowave_encode_device();
-      if (!pyrowave_device) {
-        BOOST_LOG(error) << "PyroWave: encode device creation failed"sv;
-        return nullptr;
-      }
-      pyrowave_device->colorspace = colorspace_from_client_config(config, false);
-      return pyrowave_device;
-    }
-
 #ifdef _WIN32
-    if (&encoder == &amdvce_legacy && native_amf_lifecycle_gate.is_quarantined()) {
+    if (&encoder == &amdvce_legacy && config.videoFormat != VIDEO_FORMAT_PYROWAVE_ID && native_amf_lifecycle_gate.is_quarantined()) {
       BOOST_LOG(error) << "AMF: refusing legacy initialization while the AMD runtime is quarantined"sv;
       return nullptr;
     }
@@ -5216,8 +5203,14 @@ namespace video {
 
     auto colorspace = colorspace_from_client_config(config, hdr_display);
 
-    platf::pix_fmt_e pix_fmt;
-    if (config.chromaSamplingType == 1) {
+    // PyroWave does not use the chosen hardware encoder: it encodes on the GPU through Vulkan and
+    // converts the captured RGB image itself, so pixel formats and 4:4:4 support do not apply.
+    const bool pyrowave = config.videoFormat == VIDEO_FORMAT_PYROWAVE_ID;
+
+    platf::pix_fmt_e pix_fmt = platf::pix_fmt_e::unknown;
+    if (pyrowave) {
+      // Chosen by the PyroWave device.
+    } else if (config.chromaSamplingType == 1) {
       // YUV 4:4:4
       if (!(encoder.flags & YUV444_SUPPORT)) {
         // Encoder can't support YUV 4:4:4 regardless of hardware capabilities
@@ -5234,7 +5227,7 @@ namespace video {
     }
 
     {
-      auto encoder_name = encoder.codec_from_config(config).name;
+      std::string encoder_name = pyrowave ? "pyrowave" : encoder.codec_from_config(config).name;
 
       BOOST_LOG(info) << "Creating encoder " << logging::bracket(encoder_name);
 
@@ -5249,7 +5242,12 @@ namespace video {
       BOOST_LOG(info) << "Color range: " << (colorspace.full_range ? "JPEG" : "MPEG");
     }
 
-    if (dynamic_cast<const encoder_platform_formats_avcodec *>(encoder.platform_formats.get())) {
+    if (pyrowave) {
+      result = disp.make_pyrowave_encode_device();
+      if (!result) {
+        BOOST_LOG(error) << "PyroWave: encode device creation failed"sv;
+      }
+    } else if (dynamic_cast<const encoder_platform_formats_avcodec *>(encoder.platform_formats.get())) {
       result = deferred_avcodec ?
                  disp.make_deferred_avcodec_encode_device(pix_fmt) :
                  disp.make_avcodec_encode_device(pix_fmt);
